@@ -92,3 +92,53 @@ func TestParsePluginFromSkill(t *testing.T) {
 		})
 	}
 }
+
+type percentageResult struct {
+	Total       int
+	Percentages map[string]float64
+}
+
+func TestSkillsBreakdown_AllTime(t *testing.T) {
+	// This test will be skipped until we have a mock indexer
+	// For now, it documents the expected behavior
+	t.Skip("requires test fixtures")
+
+	// Expected: reads all JSONL files, extracts Skill tool params, counts, calculates %
+	// Result should have non-zero TotalSkillCalls if any sessions exist
+}
+
+func TestCalculatePercentages(t *testing.T) {
+	tests := []struct {
+		name        string
+		counts      map[string]int
+		wantTotal   int
+		wantPercent map[string]float64
+	}{
+		{
+			name:   "simple",
+			counts: map[string]int{"a": 5, "b": 5},
+			wantTotal: 10,
+			wantPercent: map[string]float64{"a": 50.0, "b": 50.0},
+		},
+		{
+			name:        "empty",
+			counts:      map[string]int{},
+			wantTotal:   0,
+			wantPercent: map[string]float64{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculatePercentages(tt.counts)
+			if result.Total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", result.Total, tt.wantTotal)
+			}
+			for name, wantPct := range tt.wantPercent {
+				if got, ok := result.Percentages[name]; !ok || got != wantPct {
+					t.Errorf("percentage for %q = %v, want %v", name, got, wantPct)
+				}
+			}
+		})
+	}
+}
