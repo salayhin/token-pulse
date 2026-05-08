@@ -15,7 +15,6 @@ type ExportScope string
 const (
 	ScopeDaily    ExportScope = "daily"
 	ScopeSessions ExportScope = "sessions"
-	ScopeTools    ExportScope = "tools"
 	ScopeProjects ExportScope = "projects"
 )
 
@@ -40,12 +39,6 @@ func (e *Engine) Export(ctx context.Context, scope ExportScope, format ExportFor
 			return err
 		}
 		return writeOut(format, w, all, sessionsToCSV)
-	case ScopeTools:
-		rows, err := e.Tools(ctx, 200)
-		if err != nil {
-			return err
-		}
-		return writeOut(format, w, rows, toolsToCSV)
 	case ScopeProjects:
 		rows, err := e.Projects(ctx)
 		if err != nil {
@@ -123,18 +116,6 @@ func sessionsToCSV(w *csv.Writer, rows []SessionSummary) error {
 			r.ProjectSlug, r.GitBranch, r.StartedAt, r.EndedAt,
 			itoa(r.MessageCount), itoa(r.ToolCalls), ftoa(r.CostUSD), r.FirstPrompt,
 		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func toolsToCSV(w *csv.Writer, rows []ToolStat) error {
-	if err := w.Write([]string{"name", "count"}); err != nil {
-		return err
-	}
-	for _, r := range rows {
-		if err := w.Write([]string{r.Name, itoa(r.Count)}); err != nil {
 			return err
 		}
 	}

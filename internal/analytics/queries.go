@@ -195,32 +195,6 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 	return out, rows.Err()
 }
 
-type ToolStat struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-}
-
-func (e *Engine) Tools(ctx context.Context, top int) ([]ToolStat, error) {
-	if top <= 0 {
-		top = 20
-	}
-	rows, err := e.db.QueryContext(ctx,
-		`SELECT name, COUNT(*) AS c FROM tool_calls GROUP BY name ORDER BY c DESC LIMIT ?`, top)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ToolStat
-	for rows.Next() {
-		var s ToolStat
-		if err := rows.Scan(&s.Name, &s.Count); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
-}
-
 type CacheStats struct {
 	CacheCreateTokens int     `json:"cache_create_tokens"`
 	CacheReadTokens   int     `json:"cache_read_tokens"`

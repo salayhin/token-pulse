@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -41,7 +40,6 @@ func main() {
 	root.AddCommand(indexCmd())
 	root.AddCommand(statsCmd())
 	root.AddCommand(sessionsCmd())
-	root.AddCommand(toolsCmd())
 	root.AddCommand(exportCmd())
 
 	if err := root.Execute(); err != nil {
@@ -292,62 +290,7 @@ func sessionsCmd() *cobra.Command {
 		},
 	}
 
-	var searchProject string
-	var searchLimit int
-	searchSub := &cobra.Command{
-		Use:   "search <query>",
-		Short: "Full-text search across all messages",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, st, _, err := loadDeps()
-			if err != nil {
-				return err
-			}
-			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
-			q := strings.Join(args, " ")
-			resp, err := eng.Search(context.Background(), q, searchProject, time.Time{}, time.Time{}, searchLimit)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Found %d hits in %s\n\n", resp.Total, resp.Took)
-			for _, h := range resp.Hits {
-				fmt.Printf("%s  [%s/%s] %s\n  %s\n\n",
-					shortTime(h.Ts), h.ProjectSlug, h.Role, shortID(h.SessionID),
-					stripMarkTags(h.Snippet))
-			}
-			return nil
-		},
-	}
-	searchSub.Flags().StringVar(&searchProject, "project", "", "filter by project slug")
-	searchSub.Flags().IntVar(&searchLimit, "limit", 20, "max hits to show")
-
-	cmd.AddCommand(listSub, showSub, searchSub)
-	return cmd
-}
-
-func toolsCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "tools", Short: "Tool call analytics"}
-	cmd.AddCommand(&cobra.Command{
-		Use:   "show <tool-name>",
-		Short: "Per-tool stats",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, st, _, err := loadDeps()
-			if err != nil {
-				return err
-			}
-			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
-			d, err := eng.ToolDetail(context.Background(), args[0])
-			if err != nil {
-				return err
-			}
-			b, _ := json.MarshalIndent(d, "", "  ")
-			fmt.Println(string(b))
-			return nil
-		},
-	})
+	cmd.AddCommand(listSub, showSub)
 	return cmd
 }
 
@@ -380,7 +323,7 @@ func exportCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "csv", "csv|json")
-	cmd.Flags().StringVar(&scope, "scope", "daily", "daily|sessions|tools|projects")
+	cmd.Flags().StringVar(&scope, "scope", "daily", "daily|sessions|projects")
 	cmd.Flags().StringVarP(&outPath, "output", "o", "-", "output file (- for stdout)")
 	return cmd
 }

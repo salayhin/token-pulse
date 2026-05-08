@@ -78,25 +78,6 @@ func (h *Handlers) Cache(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, c)
 }
 
-func (h *Handlers) Tools(w http.ResponseWriter, r *http.Request) {
-	top := intParam(r, "top", 20)
-	tools, err := h.eng.Tools(r.Context(), top)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, map[string]any{"tools": tools})
-}
-
-func (h *Handlers) ToolDetail(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-	d, err := h.eng.ToolDetail(r.Context(), name)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, d)
-}
 
 func (h *Handlers) Projects(w http.ResponseWriter, r *http.Request) {
 	ps, err := h.eng.Projects(r.Context())
@@ -159,21 +140,6 @@ func (h *Handlers) SessionDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, d)
-}
-
-func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	query := q.Get("q")
-	project := q.Get("project")
-	limit := intParam(r, "limit", 25)
-	from, _ := time.Parse(time.RFC3339, q.Get("from"))
-	to, _ := time.Parse(time.RFC3339, q.Get("to"))
-	resp, err := h.eng.Search(r.Context(), query, project, from, to, limit)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, resp)
 }
 
 func (h *Handlers) Export(w http.ResponseWriter, r *http.Request) {
