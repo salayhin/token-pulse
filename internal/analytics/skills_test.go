@@ -93,11 +93,6 @@ func TestParsePluginFromSkill(t *testing.T) {
 	}
 }
 
-type percentageResult struct {
-	Total       int
-	Percentages map[string]float64
-}
-
 func TestSkillsBreakdown_AllTime(t *testing.T) {
 	// This test will be skipped until we have a mock indexer
 	// For now, it documents the expected behavior
@@ -140,5 +135,39 @@ func TestCalculatePercentages(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSkillsBreakdown_WithMockData(t *testing.T) {
+	// Create mock JSONL data
+	mockRecord := map[string]interface{}{
+		"type": "assistant",
+		"message": map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "tool_use",
+					"name": "Skill",
+					"input": map[string]interface{}{
+						"skill": "superpowers:brainstorming",
+					},
+				},
+			},
+		},
+	}
+
+	data, _ := json.Marshal(mockRecord)
+	line := string(data)
+
+	// Verify parsing works
+	var record map[string]interface{}
+	json.Unmarshal([]byte(line), &record)
+
+	msg := record["message"].(map[string]interface{})
+	content := msg["content"].([]interface{})
+	toolUse := content[0].(map[string]interface{})
+
+	skill, ok := extractSkillFromToolUse(toolUse)
+	if !ok || skill != "superpowers:brainstorming" {
+		t.Errorf("failed to extract skill from mock data")
 	}
 }
