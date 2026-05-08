@@ -47,11 +47,13 @@ func New(cfg *config.Config, eng *analytics.Engine, bus *handlers.EventBus, heal
 			r.Get("/cache", h.Cache)
 			r.Get("/tools", h.Tools)
 			r.Get("/tools/{name}", h.ToolDetail)
+			r.Get("/skills", h.Skills)
 			r.Get("/projects", h.Projects)
 			r.Get("/projects/{slug}/stats", h.ProjectStats)
 			r.Get("/sessions", h.Sessions)
 			r.Get("/sessions/search", h.Search)
 			r.Get("/sessions/{id}", h.SessionDetail)
+			r.Get("/sessions/{sessionId}/skills", h.SessionSkills)
 			r.Get("/prompts", h.PromptStats)
 			r.Get("/models", h.Models)
 			r.Get("/health", h.Health)
@@ -89,6 +91,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}()
 	select {
 	case <-ctx.Done():
+		// Tell SSE handlers to exit before Shutdown waits on them.
+		s.bus.Close()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return s.srv.Shutdown(shutdownCtx)

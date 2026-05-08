@@ -126,7 +126,20 @@ func (h *Handlers) Sessions(w http.ResponseWriter, r *http.Request) {
 	project := q.Get("project")
 	cursor := q.Get("cursor")
 	limit := intParam(r, "limit", 50)
-	resp, err := h.eng.Sessions(r.Context(), project, cursor, limit)
+	// from/to accept "YYYY-MM-DD" (UTC). The range is half-open: from <= ended_at < to+1d,
+	// so an end-date selection includes the entire day.
+	var from, to time.Time
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			from = t
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			to = t.Add(24 * time.Hour)
+		}
+	}
+	resp, err := h.eng.Sessions(r.Context(), project, cursor, from, to, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -206,6 +219,25 @@ func (h *Handlers) Models(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"models": m})
 }
 
+func (h *Handlers) Skills(w http.ResponseWriter, r *http.Request) {
+	result, err := h.eng.SkillsBreakdown(r.Context(), "")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, result)
+}
+
+func (h *Handlers) SessionSkills(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	result, err := h.eng.SkillsBreakdown(r.Context(), sessionID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, result)
+}
+
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"status": "ok",
@@ -255,6 +287,8 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-h.bus.Done():
 			return
 		case ev := <-ch:
 			writeSSE(w, ev.Type, ev.Data)
