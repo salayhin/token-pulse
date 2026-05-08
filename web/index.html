@@ -13,8 +13,6 @@
       <button class="tab active" data-tab="overview">Overview</button>
       <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="sessions">Sessions</button>
-      <button class="tab" data-tab="tools">Tools</button>
-      <button class="tab" data-tab="search">Search</button>
     </nav>
     <div class="toolbar">
       <span id="tz" class="muted"></span>
@@ -173,36 +171,6 @@
       <h2 style="margin-top:8px">Thread</h2>
       <div id="sd-thread"></div>
     </div>
-  </section>
-
-  <!-- Tools tab -->
-  <section class="view hidden" id="view-tools">
-    <h2>Tools <span class="muted" id="tools-meta"></span></h2>
-    <form id="tools-form" style="margin-bottom:16px">
-      <input type="search" id="tools-q" placeholder="Filter tools by name…" style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);padding:10px 12px;border-radius:6px;font-size:14px;width:100%" />
-    </form>
-    <div class="chart-box" style="margin-bottom:16px">
-      <h2>Top 50 tools</h2>
-      <canvas id="tools-page-chart" style="max-height:600px"></canvas>
-    </div>
-    <h2>All tools</h2>
-    <table id="tools-table">
-      <thead>
-        <tr><th>Tool</th><th>Calls</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <!-- Search tab -->
-  <section class="view hidden" id="view-search">
-    <h2>Search</h2>
-    <form id="search-form">
-      <input type="search" id="search-q" placeholder="FTS5 query (e.g. dbt OR bigquery, &quot;exact phrase&quot;)" />
-      <button type="submit" class="btn">Search</button>
-      <span id="search-meta" class="muted"></span>
-    </form>
-    <div id="search-results"></div>
   </section>
 
   <script src="/static/js/chart.umd.min.js"></script>

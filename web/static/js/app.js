@@ -120,7 +120,7 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 });
 
 // ---------- Hash routing (saved views) ----------
-// #overview · #projects · #sessions · #sessions/<id> · #search/<q> · #project/<slug>
+// #overview · #projects · #sessions · #sessions/<id> · #project/<slug>
 function parseHash() {
   const h = (location.hash || '#overview').slice(1);
   const [head, ...rest] = h.split('/');
@@ -141,8 +141,6 @@ function activateTab(name, opts = {}) {
   }
   if (name === 'projects') loadProjects();
   if (name === 'sessions' && !opts.suppressLoad) loadSessions(true);
-  if (name === 'tools') loadToolsPage();
-  if (name === 'search') document.getElementById('search-q').focus();
   if (!opts.suppressHash) setHash(name);
 }
 document.querySelectorAll('.tab').forEach(b =>
@@ -436,83 +434,6 @@ document.getElementById('sd-copy-link').addEventListener('click', async () => {
     btn.textContent = 'Copy failed';
   }
 });
-
-// ---------- Tools tab ----------
-let toolsPageChart;
-let toolsAll = [];
-
-async function loadToolsPage() {
-  if (toolsAll.length === 0) {
-    const data = await getJSON('/api/v1/tools?top=500');
-    toolsAll = data.tools || [];
-  }
-  renderToolsPage(document.getElementById('tools-q').value || '');
-}
-
-function renderToolsPage(query) {
-  const q = query.trim().toLowerCase();
-  const filtered = q ? toolsAll.filter(t => t.name.toLowerCase().includes(q)) : toolsAll;
-
-  document.getElementById('tools-meta').textContent =
-    `(${filtered.length}${q ? ' matches' : ''} of ${toolsAll.length})`;
-
-  // Top 50 chart
-  const top = filtered.slice(0, 50);
-  if (toolsPageChart) toolsPageChart.destroy();
-  toolsPageChart = new Chart(document.getElementById('tools-page-chart'), {
-    type: 'bar',
-    data: { labels: top.map(t => t.name), datasets: [{ data: top.map(t => t.count), backgroundColor: '#5fcfa6' }] },
-    options: {
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#9aa0aa' }, grid: { color: '#1d1f25' } },
-        y: { ticks: { color: '#9aa0aa' }, grid: { color: '#1d1f25' } },
-      },
-    },
-  });
-
-  // Full table
-  const tbody = document.querySelector('#tools-table tbody');
-  tbody.innerHTML = '';
-  for (const t of filtered) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${t.name}</td><td>${fmtInt(t.count)}</td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-document.getElementById('tools-q').addEventListener('input', e => renderToolsPage(e.target.value));
-document.getElementById('tools-form').addEventListener('submit', e => e.preventDefault());
-
-// ---------- Search ----------
-const searchForm = document.getElementById('search-form');
-searchForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  await runSearch(document.getElementById('search-q').value.trim());
-});
-
-async function runSearch(q, opts = {}) {
-  if (!q) return;
-  document.getElementById('search-q').value = q;
-  if (!opts.suppressHash) setHash('search/' + encodeURIComponent(q));
-  const meta = document.getElementById('search-meta');
-  meta.textContent = 'searching…';
-  const data = await getJSON('/api/v1/sessions/search?q=' + encodeURIComponent(q) + '&limit=30');
-  meta.textContent = `${data.total} hits in ${data.took}`;
-  const out = document.getElementById('search-results');
-  out.innerHTML = '';
-  for (const h of data.hits || []) {
-    const div = document.createElement('div');
-    div.className = 'hit';
-    div.innerHTML = `
-      <div class="meta">${shortTs(h.ts)} · ${h.project_slug} / ${h.role} · session ${h.session_id.slice(0,8)}</div>
-      <div class="snip">${h.snippet}</div>`;
-    div.title = 'Open session';
-    div.addEventListener('click', () => setHash('sessions/' + encodeURIComponent(h.session_id)));
-    out.appendChild(div);
-  }
-}
 
 // ---------- SSE live updates ----------
 function connectEvents() {
