@@ -1,0 +1,373 @@
+package analytics
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"fmt"
+	"strings"
+	"time"
+)
+
+type SessionSummary struct {
+	ID           string  `json:"id"`
+	ProjectSlug  string  `json:"project_slug"`
+	CWD          string  `json:"cwd,omitempty"`
+	GitBranch    string  `json:"git_branch,omitempty"`
+	StartedAt    string  `json:"started_at,omitempty"`
+	EndedAt      string  `json:"ended_at,omitempty"`
+	MessageCount int     `json:"message_count"`
+	ToolCalls    int     `json:"tool_calls"`
+	CostUSD      float64 `json:"cost_usd"`
+	FirstPrompt  string  `json:"first_prompt,omitempty"`
+}
+
+type SessionListResponse struct {
+	Sessions   []SessionSummary `json:"sessions"`
+	NextCursor string           `json:"next_cursor,omitempty"`
+}
+
+// Sessions returns a cursor-paginated list, newest first.
+// Cursor is opaque base64 of "ended_at|id".
+func (e *Engine) Sessions(ctx context.Context, project, cursor string, limit int) (*SessionListResponse, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	args := []any{}
+	conds := []string{"1=1"}
+	if project != "" {
+		conds = append(conds, "s.project_slug=?")
+		args = append(args, project)
+	}
+	if cursor != "" {
+		ts, id, err := decodeCursor(cursor)
+		if err == nil {
+			conds = append(conds, "(s.ended_at < ? OR (s.ended_at = ? AND s.id < ?))")
+			args = append(args, ts, ts, id)
+		}
+	}
+	q := fmt.Sprintf(`
+		SELECT s.id, s.project_slug, COALESCE(s.cwd,''), COALESCE(s.git_branch,''),
+		       COALESCE(s.started_at,''), COALESCE(s.ended_at,''), s.message_count,
+		       (SELECT COUNT(*) FROM tool_calls tc WHERE tc.session_id=s.id) AS tool_calls
+		FROM sessions s
+		WHERE %s
+		ORDER BY s.ended_at DESC, s.id DESC
+		LIMIT ?`, strings.Join(conds, " AND "))
+	args = append(args, limit+1)
+
+	rows, err := e.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SessionSummary
+	for rows.Next() {
+		var s SessionSummary
+		if err := rows.Scan(&s.ID, &s.ProjectSlug, &s.CWD, &s.GitBranch,
+			&s.StartedAt, &s.EndedAt, &s.MessageCount, &s.ToolCalls); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	resp := &SessionListResponse{Sessions: out}
+	if len(out) > limit {
+		last := out[limit-1]
+		resp.Sessions = out[:limit]
+		resp.NextCursor = encodeCursor(last.EndedAt, last.ID)
+	}
+
+	for i := range resp.Sessions {
+		if cost, err := e.sessionCost(ctx, resp.Sessions[i].ID); err == nil {
+			resp.Sessions[i].CostUSD = cost
+		}
+		resp.Sessions[i].FirstPrompt = e.firstPrompt(ctx, resp.Sessions[i].ID)
+	}
+	return resp, nil
+}
+
+func (e *Engine) sessionCost(ctx context.Context, sessionID string) (float64, error) {
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT model,
+		       COALESCE(SUM(input_tokens),0),
+		       COALESCE(SUM(output_tokens),0),
+		       COALESCE(SUM(cache_create_tokens),0),
+		       COALESCE(SUM(cache_read_tokens),0)
+		FROM messages
+		WHERE session_id=? AND role='assistant'
+		GROUP BY model`, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var total float64
+	for rows.Next() {
+		var model string
+		var in, out, cc, cr int
+		if err := rows.Scan(&model, &in, &out, &cc, &cr); err != nil {
+			return 0, err
+		}
+		total += CostUSD(e.cfg.PricingFor(model), in, out, cc, cr)
+	}
+	return total, rows.Err()
+}
+
+func (e *Engine) firstPrompt(ctx context.Context, sessionID string) string {
+	var preview string
+	_ = e.db.QueryRowContext(ctx, `
+		SELECT COALESCE(preview,'') FROM messages
+		WHERE session_id=? AND role='user' AND text != ''
+		ORDER BY ts ASC LIMIT 1`, sessionID).Scan(&preview)
+	return preview
+}
+
+type SessionMessage struct {
+	UUID         string            `json:"uuid"`
+	ParentUUID   *string           `json:"parent_uuid,omitempty"`
+	Role         string            `json:"role"`
+	Model        string            `json:"model,omitempty"`
+	Ts           string            `json:"ts"`
+	Text         string            `json:"text,omitempty"`
+	Preview      string            `json:"preview,omitempty"`
+	HasThinking  bool              `json:"has_thinking,omitempty"`
+	InputTokens  int               `json:"input_tokens,omitempty"`
+	OutputTokens int               `json:"output_tokens,omitempty"`
+	CacheCreate  int               `json:"cache_create_tokens,omitempty"`
+	CacheRead    int               `json:"cache_read_tokens,omitempty"`
+	CostUSD      float64           `json:"cost_usd,omitempty"`
+	ToolCalls    []ToolCallSummary `json:"tool_calls,omitempty"`
+}
+
+type ToolCallSummary struct {
+	Name      string `json:"name"`
+	ToolUseID string `json:"tool_use_id,omitempty"`
+}
+
+type SessionDetail struct {
+	Session  SessionSummary   `json:"session"`
+	Cache    *CacheStats      `json:"cache,omitempty"`
+	Messages []SessionMessage `json:"messages"`
+}
+
+func (e *Engine) Session(ctx context.Context, sessionID string) (*SessionDetail, error) {
+	var s SessionSummary
+	row := e.db.QueryRowContext(ctx, `
+		SELECT id, project_slug, COALESCE(cwd,''), COALESCE(git_branch,''),
+		       COALESCE(started_at,''), COALESCE(ended_at,''), message_count
+		FROM sessions WHERE id=?`, sessionID)
+	if err := row.Scan(&s.ID, &s.ProjectSlug, &s.CWD, &s.GitBranch,
+		&s.StartedAt, &s.EndedAt, &s.MessageCount); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	cost, err := e.sessionCost(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	s.CostUSD = cost
+
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT uuid, parent_uuid, role, COALESCE(model,''), ts,
+		       COALESCE(text,''), COALESCE(preview,''), has_thinking,
+		       input_tokens, output_tokens, cache_create_tokens, cache_read_tokens
+		FROM messages WHERE session_id=?
+		ORDER BY ts ASC, uuid ASC`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []SessionMessage
+	for rows.Next() {
+		var m SessionMessage
+		var hasThinking int
+		if err := rows.Scan(&m.UUID, &m.ParentUUID, &m.Role, &m.Model, &m.Ts,
+			&m.Text, &m.Preview, &hasThinking,
+			&m.InputTokens, &m.OutputTokens, &m.CacheCreate, &m.CacheRead); err != nil {
+			return nil, err
+		}
+		m.HasThinking = hasThinking != 0
+		if m.Role == "assistant" {
+			p := e.cfg.PricingFor(m.Model)
+			m.CostUSD = CostUSD(p, m.InputTokens, m.OutputTokens, m.CacheCreate, m.CacheRead)
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Attach tool calls per message.
+	tcRows, err := e.db.QueryContext(ctx, `
+		SELECT message_uuid, name, COALESCE(tool_use_id,'') FROM tool_calls WHERE session_id=?`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer tcRows.Close()
+	tcByMsg := map[string][]ToolCallSummary{}
+	for tcRows.Next() {
+		var mu, name, tid string
+		if err := tcRows.Scan(&mu, &name, &tid); err != nil {
+			return nil, err
+		}
+		tcByMsg[mu] = append(tcByMsg[mu], ToolCallSummary{Name: name, ToolUseID: tid})
+	}
+	for i := range msgs {
+		msgs[i].ToolCalls = tcByMsg[msgs[i].UUID]
+	}
+	s.ToolCalls = countToolCalls(tcByMsg)
+	s.FirstPrompt = e.firstPrompt(ctx, sessionID)
+	cache, err := e.sessionCache(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return &SessionDetail{Session: s, Cache: cache, Messages: msgs}, nil
+}
+
+func (e *Engine) sessionCache(ctx context.Context, sessionID string) (*CacheStats, error) {
+	row := e.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(input_tokens),0),
+		        COALESCE(SUM(cache_create_tokens),0),
+		        COALESCE(SUM(cache_read_tokens),0)
+		 FROM messages WHERE session_id=? AND role='assistant'`, sessionID)
+	var in, cc, cr int
+	if err := row.Scan(&in, &cc, &cr); err != nil {
+		return nil, err
+	}
+	hr := 0.0
+	if denom := float64(in + cc + cr); denom > 0 {
+		hr = float64(cr) / denom
+	}
+
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT model,
+		       COALESCE(SUM(cache_create_tokens),0),
+		       COALESCE(SUM(cache_read_tokens),0)
+		FROM messages WHERE session_id=? AND role='assistant'
+		GROUP BY model`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var savings float64
+	for rows.Next() {
+		var model string
+		var c, r int
+		if err := rows.Scan(&model, &c, &r); err != nil {
+			return nil, err
+		}
+		savings += NetCacheSavingsUSD(e.cfg.PricingFor(model), c, r)
+	}
+	return &CacheStats{
+		InputTokens:       in,
+		CacheCreateTokens: cc,
+		CacheReadTokens:   cr,
+		HitRate:           hr,
+		NetSavingsUSD:     savings,
+	}, rows.Err()
+}
+
+func countToolCalls(m map[string][]ToolCallSummary) int {
+	n := 0
+	for _, v := range m {
+		n += len(v)
+	}
+	return n
+}
+
+// SearchHit -------------------------------------------------------------
+
+type SearchHit struct {
+	MessageUUID string `json:"message_uuid"`
+	SessionID   string `json:"session_id"`
+	ProjectSlug string `json:"project_slug"`
+	Role        string `json:"role"`
+	Ts          string `json:"ts"`
+	Snippet     string `json:"snippet"`
+}
+
+type SearchResponse struct {
+	Hits  []SearchHit `json:"hits"`
+	Total int         `json:"total"`
+	Took  string      `json:"took"`
+}
+
+func (e *Engine) Search(ctx context.Context, q, project string, from, to time.Time, limit int) (*SearchResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	if strings.TrimSpace(q) == "" {
+		return &SearchResponse{}, nil
+	}
+	start := time.Now()
+
+	conds := []string{"messages_fts MATCH ?"}
+	args := []any{q}
+	if project != "" {
+		conds = append(conds, "project_slug=?")
+		args = append(args, project)
+	}
+	if !from.IsZero() {
+		conds = append(conds, "ts >= ?")
+		args = append(args, fmtTS(from))
+	}
+	if !to.IsZero() {
+		conds = append(conds, "ts < ?")
+		args = append(args, fmtTS(to))
+	}
+	args = append(args, limit)
+
+	sqlText := `
+		SELECT message_uuid, session_id, project_slug, role, ts,
+		       snippet(messages_fts, 0, '<mark>', '</mark>', '…', 12) AS snip
+		FROM messages_fts
+		WHERE ` + strings.Join(conds, " AND ") + `
+		ORDER BY rank
+		LIMIT ?`
+	rows, err := e.db.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var hits []SearchHit
+	for rows.Next() {
+		var h SearchHit
+		if err := rows.Scan(&h.MessageUUID, &h.SessionID, &h.ProjectSlug, &h.Role, &h.Ts, &h.Snippet); err != nil {
+			return nil, err
+		}
+		hits = append(hits, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &SearchResponse{
+		Hits:  hits,
+		Total: len(hits),
+		Took:  time.Since(start).Round(time.Millisecond).String(),
+	}, nil
+}
+
+// Cursor helpers --------------------------------------------------------
+
+func encodeCursor(ts, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(ts + "|" + id))
+}
+
+func decodeCursor(cursor string) (string, string, error) {
+	b, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(string(b), "|", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("bad cursor")
+	}
+	return parts[0], parts[1], nil
+}

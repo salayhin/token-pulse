@@ -1,0 +1,72 @@
+version: 2
+
+project_name: claude-token-lens
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: claude-token-lens
+    main: ./cmd/claude-token-lens
+    binary: claude-token-lens
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+release:
+  prerelease: auto
+  draft: false
+
+brews:
+  - name: claude-token-lens
+    repository:
+      owner: sirajus-salayhin
+      name: homebrew-tap
+      branch: main
+    homepage: https://github.com/sirajus-salayhin/claude-token-lens
+    description: Local dashboard & CLI for Claude Code usage analytics
+    license: MIT
+    install: |
+      bin.install "claude-token-lens"
+    test: |
+      system "#{bin}/claude-token-lens", "--help"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch

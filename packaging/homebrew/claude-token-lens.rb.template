@@ -1,0 +1,19 @@
+# Reference Homebrew formula. GoReleaser auto-generates and publishes
+# the real one to <owner>/homebrew-tap on each tagged release. This
+# template documents the shape — useful if you want to install from
+# source before any release exists.
+class ClaudeTokenLens < Formula
+  desc "Local dashboard & CLI for Claude Code usage analytics"
+  homepage "https://github.com/sirajus-salayhin/claude-token-lens"
+  url "https://github.com/sirajus-salayhin/claude-token-lens/releases/download/vX.Y.Z/claude-token-lens_X.Y.Z_Darwin_arm64.tar.gz"
+  sha256 "REPLACE_ME"
+  license "MIT"
+
+  def install
+    bin.install "claude-token-lens"
+  end
+
+  test do
+    system "#{bin}/claude-token-lens", "--help"
+  end
+end

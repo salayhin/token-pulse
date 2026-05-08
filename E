@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>claude-token-lens</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <header>
+    <h1>claude-token-lens</h1>
+    <nav class="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="sessions">Sessions</button>
+      <button class="tab" data-tab="tools">Tools</button>
+      <button class="tab" data-tab="search">Search</button>
+    </nav>
+    <div class="toolbar">
+      <span id="tz" class="muted"></span>
+      <span id="live" class="muted live-dot" title="live updates">●</span>
+      <button id="theme-toggle" class="icon-btn" title="toggle theme">◐</button>
+    </div>
+  </header>
+
+  <!-- Overview tab -->
+  <section class="view" id="view-overview">
+    <div class="cards">
+      <div class="card">
+        <h2>Today</h2>
+        <div class="metric"><span class="label">Cost</span><span id="today-cost">—</span></div>
+        <div class="metric"><span class="label">Sessions</span><span id="today-sessions">—</span></div>
+        <div class="metric"><span class="label">Messages</span><span id="today-messages">—</span></div>
+        <div class="metric"><span class="label">Tool calls</span><span id="today-tools">—</span></div>
+      </div>
+      <div class="card">
+        <h2>All time</h2>
+        <div class="metric"><span class="label">Cost</span><span id="all-cost">—</span></div>
+        <div class="metric"><span class="label">Sessions</span><span id="all-sessions">—</span></div>
+        <div class="metric"><span class="label">Messages</span><span id="all-messages">—</span></div>
+        <div class="metric"><span class="label">Tool calls</span><span id="all-tools">—</span></div>
+      </div>
+      <div class="card">
+        <h2>Cache</h2>
+        <div class="metric"><span class="label">Hit rate</span><span id="cache-rate">—</span></div>
+        <div class="metric"><span class="label">Reads</span><span id="cache-reads">—</span></div>
+        <div class="metric"><span class="label">Creates</span><span id="cache-creates">—</span></div>
+        <div class="metric"><span class="label">Net savings</span><span id="cache-savings">—</span></div>
+      </div>
+      <div class="card">
+        <h2>Projection</h2>
+        <div class="metric"><span class="label">Month-to-date</span><span id="proj-mtd">—</span></div>
+        <div class="metric"><span class="label">7d daily avg</span><span id="proj-avg">—</span></div>
+        <div class="metric"><span class="label">Projected month</span><span id="proj-month">—</span></div>
+        <div class="metric"><span class="label">Days remaining</span><span id="proj-rem">—</span></div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Daily cost (last 30d, with 7d MA)</h2>
+        <canvas id="trends-chart"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Top tools</h2>
+        <canvas id="tools-chart"></canvas>
+      </div>
+    </div>
+
+    <h2>Daily breakdown</h2>
+    <table id="daily-table">
+      <thead>
+        <tr><th>Date</th><th>Sessions</th><th>Msgs</th><th>Input</th><th>Output</th><th>Cache rd</th><th>Cache cr</th><th>Cost</th><th>Saved</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Projects tab -->
+  <section class="view hidden" id="view-projects">
+    <h2>Projects</h2>
+    <table id="projects-table">
+      <thead>
+        <tr><th>Project</th><th>Sessions</th><th>Messages</th><th>Tools</th><th>Cost</th><th>Last active</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Sessions tab -->
+  <section class="view hidden" id="view-sessions">
+    <h2>Sessions <span class="muted" id="sessions-meta"></span></h2>
+    <table id="sessions-table">
+      <thead>
+        <tr><th>Ended</th><th>Project</th><th>Branch</th><th>Msgs</th><th>Tools</th><th>Cost</th><th>First prompt</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager">
+      <button id="sessions-more" class="btn">Load more</button>
+    </div>
+
+    <div id="session-detail" class="hidden">
+      <div id="sd-toolbar">
+        <button class="btn back" id="session-back">← Back</button>
+        <a class="btn focus-only" href="/">← Dashboard</a>
+        <button class="btn focus-only" id="sd-open-in-app">Open in app</button>
+        <button class="btn focus-only" id="sd-copy-link">Copy link</button>
+        <button class="icon-btn focus-only" id="sd-theme-toggle" title="toggle theme">◐</button>
+      </div>
+      <h2 id="sd-title"></h2>
+      <div class="muted" id="sd-meta"></div>
+
+      <div id="sd-cards" class="cards" style="margin-top:16px">
+        <div class="card">
+          <h2>This session</h2>
+          <div class="metric"><span class="label">Cost</span><span id="sd-cost">—</span></div>
+          <div class="metric"><span class="label">Messages</span><span id="sd-messages">—</span></div>
+          <div class="metric"><span class="label">Tool calls</span><span id="sd-tools-count">—</span></div>
+          <div class="metric"><span class="label">Started</span><span id="sd-started">—</span></div>
+          <div class="metric"><span class="label">Ended</span><span id="sd-ended">—</span></div>
+          <div class="metric"><span class="label">Duration</span><span id="sd-duration">—</span></div>
+        </div>
+        <div class="card">
+          <h2>Cache (this session)</h2>
+          <div class="metric"><span class="label">Hit rate</span><span id="sd-cache-rate">—</span></div>
+          <div class="metric"><span class="label">Reads</span><span id="sd-cache-reads">—</span></div>
+          <div class="metric"><span class="label">Creates</span><span id="sd-cache-creates">—</span></div>
+          <div class="metric"><span class="label">Net savings</span><span id="sd-cache-savings">—</span></div>
+        </div>
+      </div>
+
+      <div id="sd-charts" class="charts">
+        <div class="chart-box">
+          <h2>Message timeline (cost per assistant turn)</h2>
+          <canvas id="sd-timeline-chart"></canvas>
+        </div>
+        <div class="chart-box">
+          <h2>Top tools (this session)</h2>
+          <canvas id="sd-tools-chart"></canvas>
+        </div>
+      </div>
+
+      <h2 style="margin-top:8px">Thread</h2>
+      <div id="sd-thread"></div>
+    </div>
+  </section>
+
+  <!-- Tools tab -->
+  <section class="view hidden" id="view-tools">
+    <h2>Tools <span class="muted" id="tools-meta"></span></h2>
+    <form id="tools-form" style="margin-bottom:16px">
+      <input type="search" id="tools-q" placeholder="Filter tools by name…" style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);padding:10px 12px;border-radius:6px;font-size:14px;width:100%" />
+    </form>
+    <div class="chart-box" style="margin-bottom:16px">
+      <h2>Top 50 tools</h2>
+      <canvas id="tools-page-chart" style="max-height:600px"></canvas>
+    </div>
+    <h2>All tools</h2>
+    <table id="tools-table">
+      <thead>
+        <tr><th>Tool</th><th>Calls</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Search tab -->
+  <section class="view hidden" id="view-search">
+    <h2>Search</h2>
+    <form id="search-form">
+      <input type="search" id="search-q" placeholder="FTS5 query (e.g. dbt OR bigquery, &quot;exact phrase&quot;)" />
+      <button type="submit" class="btn">Search</button>
+      <span id="search-meta" class="muted"></span>
+    </form>
+    <div id="search-results"></div>
+  </section>
+
+  <script src="/static/js/chart.umd.min.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
