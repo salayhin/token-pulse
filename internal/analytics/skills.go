@@ -38,3 +38,39 @@ func parsePluginFromSkill(skill string) (string, bool) {
 	// No plugin for "/" prefixed skills or standalone names
 	return "", true
 }
+
+func calculatePercentages(counts map[string]int) percentageResult {
+	var total int
+	for _, count := range counts {
+		total += count
+	}
+
+	pcts := make(map[string]float64)
+	if total > 0 {
+		for name, count := range counts {
+			pcts[name] = float64(count) / float64(total) * 100
+		}
+	}
+
+	return percentageResult{Total: total, Percentages: pcts}
+}
+
+func countsToSortedUsages(counts map[string]int, percentages map[string]float64) []SkillUsage {
+	usages := make([]SkillUsage, 0, len(counts))
+	for name, count := range counts {
+		usages = append(usages, SkillUsage{
+			Name:       name,
+			Count:      count,
+			Percentage: percentages[name],
+		})
+	}
+	// Sort by count descending
+	for i := 0; i < len(usages); i++ {
+		for j := i + 1; j < len(usages); j++ {
+			if usages[j].Count > usages[i].Count {
+				usages[i], usages[j] = usages[j], usages[i]
+			}
+		}
+	}
+	return usages
+}
