@@ -226,16 +226,20 @@ func sessionsCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 			eng := analytics.New(st.DB(), cfg)
-			resp, err := eng.Sessions(context.Background(), listProject, "", listLimit)
+			resp, err := eng.Sessions(context.Background(), listProject, "", time.Time{}, time.Time{}, listLimit)
 			if err != nil {
 				return err
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			defer tw.Flush()
-			fmt.Fprintln(tw, "ID\tPROJECT\tENDED\tMSGS\tCOST\tFIRST PROMPT")
+			fmt.Fprintln(tw, "ID\tTITLE\tPROJECT\tENDED\tMSGS\tCOST\tFIRST PROMPT")
 			for _, s := range resp.Sessions {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t$%.2f\t%s\n",
-					shortID(s.ID), s.ProjectSlug, shortTime(s.EndedAt),
+				title := s.DisplayTitle
+				if title == "" {
+					title = "—"
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t$%.2f\t%s\n",
+					shortID(s.ID), truncate(title, 40), s.ProjectSlug, shortTime(s.EndedAt),
 					s.MessageCount, s.CostUSD, truncate(s.FirstPrompt, 60))
 			}
 			return nil

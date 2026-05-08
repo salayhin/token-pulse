@@ -49,7 +49,7 @@ func (e *Engine) findSessionFiles(sessionID string) []string {
 	}
 	claudeDir := filepath.Join(home, ".claude", "projects")
 
-	filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -73,7 +73,7 @@ func (e *Engine) getAllSessionFiles() []string {
 	}
 	claudeDir := filepath.Join(home, ".claude", "projects")
 
-	filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip inaccessible paths
 		}

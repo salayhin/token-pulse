@@ -9,6 +9,9 @@ storage:
   path: "~/.config/claude-token-lens/data.db"
 
 # USD per 1M tokens. Override per-model. Unknown models fall back to `fallback`.
+# `cache_create` is the 5-minute ephemeral cache write rate; `cache_create_1h`
+# is the 1-hour ephemeral rate (typically 1.6× higher). If `cache_create_1h`
+# is omitted, 1h cache writes fall back to the `cache_create` rate.
 pricing:
   preset: "anthropic-api"
   models:
@@ -17,18 +20,22 @@ pricing:
       output: 75.0
       cache_read: 1.50
       cache_create: 18.75
+      cache_create_1h: 30.0
     claude-sonnet-4:
       input: 3.0
       output: 15.0
       cache_read: 0.30
       cache_create: 3.75
+      cache_create_1h: 6.0
     claude-haiku-4:
       input: 1.0
       output: 5.0
       cache_read: 0.10
       cache_create: 1.25
+      cache_create_1h: 2.0
   fallback:
     input: 3.0
     output: 15.0
     cache_read: 0.30
     cache_create: 3.75
+    cache_create_1h: 6.0

@@ -176,6 +176,17 @@ func (s *Store) migrate() error {
 	for _, alter := range []string{
 		`ALTER TABLE files_seen ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE files_seen ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`,
+		// Split cache_create_tokens by ephemeral TTL. The legacy column stays
+		// (it's the wire-format sum, populated for every row); the split is
+		// populated only for rows indexed after this migration. Cost analytics
+		// fall back to the legacy column for unallocated tokens — see CostUSD.
+		`ALTER TABLE messages ADD COLUMN cache_create_5m_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE messages ADD COLUMN cache_create_1h_tokens INTEGER NOT NULL DEFAULT 0`,
+		// Session identity beyond the UUID. Populated from ai-title /
+		// custom-title / agent-name records emitted by Claude Code.
+		`ALTER TABLE sessions ADD COLUMN ai_title     TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN custom_title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN agent_name   TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("migrate: %w (%s)", err, alter)
@@ -186,21 +197,25 @@ func (s *Store) migrate() error {
 
 // MessageRow is the input shape for batch upserts.
 type MessageRow struct {
-	UUID              string
-	SessionID         string
-	ProjectSlug       string
-	ParentUUID        *string
-	Role              string
-	Model             string
-	Ts                time.Time
-	InputTokens       int
-	OutputTokens      int
-	CacheCreateTokens int
-	CacheReadTokens   int
-	ServiceTier       string
-	HasThinking       bool
-	Text              string
-	Preview           string
+	UUID        string
+	SessionID   string
+	ProjectSlug string
+	ParentUUID  *string
+	Role        string
+	Model       string
+	Ts          time.Time
+	InputTokens int
+	// CacheCreateTokens is the wire-format sum (5m + 1h). CacheCreate5mTokens
+	// and CacheCreate1hTokens carry the split when present.
+	CacheCreateTokens   int
+	CacheCreate5mTokens int
+	CacheCreate1hTokens int
+	CacheReadTokens     int
+	OutputTokens        int
+	ServiceTier         string
+	HasThinking         bool
+	Text                string
+	Preview             string
 }
 
 type ToolCallRow struct {
@@ -220,6 +235,11 @@ type SessionRow struct {
 	StartedAt    time.Time
 	EndedAt      time.Time
 	MessageCount int
+	// Identity / display fields. Empty string means "not seen in this batch";
+	// UpsertSession preserves any prior non-empty value via COALESCE-on-empty.
+	AITitle     string
+	CustomTitle string
+	AgentName   string
 }
 
 func (s *Store) UpsertProject(ctx context.Context, slug, cwd string) error {
@@ -237,17 +257,26 @@ func (s *Store) UpsertSession(ctx context.Context, r SessionRow) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return s.timed("UpsertSession", func() error {
+		// Title fields: an incremental reindex of an active session may not
+		// re-encounter the ai-title / custom-title / agent-name records (they
+		// appear once near session start). We must NOT overwrite a stored
+		// title with an empty incoming value — hence NULLIF + COALESCE.
 		_, err := s.db.ExecContext(ctx,
-			`INSERT INTO sessions(id, project_slug, cwd, git_branch, version, started_at, ended_at, message_count)
-			 VALUES(?,?,?,?,?,?,?,?)
+			`INSERT INTO sessions(id, project_slug, cwd, git_branch, version, started_at, ended_at, message_count, ai_title, custom_title, agent_name)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?)
 			 ON CONFLICT(id) DO UPDATE SET
 			   cwd=excluded.cwd,
 			   git_branch=excluded.git_branch,
 			   version=excluded.version,
 			   started_at=MIN(sessions.started_at, excluded.started_at),
 			   ended_at=MAX(sessions.ended_at, excluded.ended_at),
-			   message_count=excluded.message_count`,
-			r.ID, r.ProjectSlug, r.CWD, r.GitBranch, r.Version, fmtTS(r.StartedAt), fmtTS(r.EndedAt), r.MessageCount)
+			   message_count=excluded.message_count,
+			   ai_title=COALESCE(NULLIF(excluded.ai_title, ''), sessions.ai_title),
+			   custom_title=COALESCE(NULLIF(excluded.custom_title, ''), sessions.custom_title),
+			   agent_name=COALESCE(NULLIF(excluded.agent_name, ''), sessions.agent_name)`,
+			r.ID, r.ProjectSlug, r.CWD, r.GitBranch, r.Version,
+			fmtTS(r.StartedAt), fmtTS(r.EndedAt), r.MessageCount,
+			r.AITitle, r.CustomTitle, r.AgentName)
 		return err
 	})
 }
@@ -295,8 +324,8 @@ func (s *Store) insertMessagesChunk(ctx context.Context, rows []MessageRow) erro
 		defer tx.Rollback()
 		stmt, err := tx.PrepareContext(ctx,
 			`INSERT OR IGNORE INTO messages
-			 (uuid, session_id, parent_uuid, role, model, ts, input_tokens, output_tokens, cache_create_tokens, cache_read_tokens, service_tier, has_thinking, text, preview)
-			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+			 (uuid, session_id, parent_uuid, role, model, ts, input_tokens, output_tokens, cache_create_tokens, cache_create_5m_tokens, cache_create_1h_tokens, cache_read_tokens, service_tier, has_thinking, text, preview)
+			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			return err
 		}
@@ -310,7 +339,9 @@ func (s *Store) insertMessagesChunk(ctx context.Context, rows []MessageRow) erro
 		for _, r := range rows {
 			if _, err := stmt.ExecContext(ctx,
 				r.UUID, r.SessionID, r.ParentUUID, r.Role, r.Model, fmtTS(r.Ts),
-				r.InputTokens, r.OutputTokens, r.CacheCreateTokens, r.CacheReadTokens,
+				r.InputTokens, r.OutputTokens,
+				r.CacheCreateTokens, r.CacheCreate5mTokens, r.CacheCreate1hTokens,
+				r.CacheReadTokens,
 				r.ServiceTier, boolToInt(r.HasThinking), r.Text, r.Preview,
 			); err != nil {
 				return err
@@ -399,6 +430,30 @@ func (s *Store) MarkFileSeen(ctx context.Context, path string, size int64, mtime
 			   last_offset=excluded.last_offset,
 			   session_id=CASE WHEN excluded.session_id != '' THEN excluded.session_id ELSE files_seen.session_id END`,
 			path, size, mtime, time.Now().UTC(), lastOffset, sessionID)
+		return err
+	})
+}
+
+// UpdateSessionTitles writes the title fields for a session, preserving any
+// already-stored value when the incoming string is empty. Used by the
+// incremental indexing path because ai-title / custom-title / agent-name
+// records are typically emitted near session start and won't reappear in
+// later batches; a generic UpsertSession on incremental would risk wiping
+// cwd/git_branch with empty strings.
+func (s *Store) UpdateSessionTitles(ctx context.Context, sessionID, aiTitle, customTitle, agentName string) error {
+	if aiTitle == "" && customTitle == "" && agentName == "" {
+		return nil
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return s.timed("UpdateSessionTitles", func() error {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE sessions
+			   SET ai_title     = COALESCE(NULLIF(?, ''), ai_title),
+			       custom_title = COALESCE(NULLIF(?, ''), custom_title),
+			       agent_name   = COALESCE(NULLIF(?, ''), agent_name)
+			 WHERE id = ?`,
+			aiTitle, customTitle, agentName, sessionID)
 		return err
 	})
 }

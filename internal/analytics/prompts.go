@@ -99,6 +99,8 @@ func (e *Engine) Models(ctx context.Context) ([]ModelStat, error) {
 		       COALESCE(SUM(input_tokens),0),
 		       COALESCE(SUM(output_tokens),0),
 		       COALESCE(SUM(cache_create_tokens),0),
+		       COALESCE(SUM(cache_create_5m_tokens),0),
+		       COALESCE(SUM(cache_create_1h_tokens),0),
 		       COALESCE(SUM(cache_read_tokens),0)
 		FROM messages
 		WHERE role='assistant'
@@ -111,12 +113,13 @@ func (e *Engine) Models(ctx context.Context) ([]ModelStat, error) {
 	var out []ModelStat
 	for rows.Next() {
 		var m ModelStat
+		var c5m, c1h int
 		if err := rows.Scan(&m.Model, &m.Sessions, &m.AssistantMessages,
-			&m.InputTokens, &m.OutputTokens, &m.CacheCreate, &m.CacheRead); err != nil {
+			&m.InputTokens, &m.OutputTokens, &m.CacheCreate, &c5m, &c1h, &m.CacheRead); err != nil {
 			return nil, err
 		}
 		p := e.cfg.PricingFor(m.Model)
-		m.CostUSD = CostUSD(p, m.InputTokens, m.OutputTokens, m.CacheCreate, m.CacheRead)
+		m.CostUSD = CostUSD(p, m.InputTokens, m.OutputTokens, c5m, c1h, m.CacheCreate, m.CacheRead)
 		if m.AssistantMessages > 0 {
 			m.AvgCostPerMsgUSD = m.CostUSD / float64(m.AssistantMessages)
 		}

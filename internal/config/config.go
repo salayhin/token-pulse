@@ -40,10 +40,24 @@ type PricingPresets struct {
 }
 
 type ModelPricing struct {
-	Input       float64 `mapstructure:"input"`
-	Output      float64 `mapstructure:"output"`
-	CacheRead   float64 `mapstructure:"cache_read"`
-	CacheCreate float64 `mapstructure:"cache_create"`
+	Input float64 `mapstructure:"input"`
+	// CacheCreate is the rate (USD per 1M tokens) for the 5-minute ephemeral
+	// cache write. CacheCreate1h is the rate for the 1-hour ephemeral cache
+	// write — typically 1.6× higher per Anthropic's pricing. If unset, the 1h
+	// rate falls back to CacheCreate (preserves backward-compatible cost).
+	CacheCreate   float64 `mapstructure:"cache_create"`
+	CacheCreate1h float64 `mapstructure:"cache_create_1h"`
+	CacheRead     float64 `mapstructure:"cache_read"`
+	Output        float64 `mapstructure:"output"`
+}
+
+// CacheCreate1hRate returns the 1h cache rate, falling back to CacheCreate
+// when the 1h rate is unconfigured. This keeps existing user configs working.
+func (p ModelPricing) CacheCreate1hRate() float64 {
+	if p.CacheCreate1h > 0 {
+		return p.CacheCreate1h
+	}
+	return p.CacheCreate
 }
 
 func (c *Config) Location() *time.Location {
@@ -114,18 +128,20 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("alerts.notify", false)
 
 	v.SetDefault("pricing.preset", "anthropic-api")
+	// 1h cache_create rates per Anthropic API pricing (≈ 2× input rate);
+	// 5m rate is ≈ 1.25× input. Verify against current published rates.
 	v.SetDefault("pricing.fallback", map[string]float64{
-		"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75,
+		"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75, "cache_create_1h": 6.0,
 	})
 	v.SetDefault("pricing.models", map[string]map[string]float64{
 		"claude-opus-4": {
-			"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75,
+			"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75, "cache_create_1h": 30.0,
 		},
 		"claude-sonnet-4": {
-			"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75,
+			"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75, "cache_create_1h": 6.0,
 		},
 		"claude-haiku-4": {
-			"input": 1.0, "output": 5.0, "cache_read": 0.10, "cache_create": 1.25,
+			"input": 1.0, "output": 5.0, "cache_read": 0.10, "cache_create": 1.25, "cache_create_1h": 2.0,
 		},
 	})
 }

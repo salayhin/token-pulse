@@ -113,6 +113,9 @@ func (idx *Indexer) indexFile(
 		version         string
 		startedAt       time.Time
 		endedAt         time.Time
+		aiTitle         string
+		customTitle     string
+		agentName       string
 	)
 
 	newOffset, err := parser.ParseFile(path, fromOffset, func(rec *parser.Record) error {
@@ -145,20 +148,22 @@ func (idx *Indexer) indexFile(
 			}
 			text := parser.AssistantText(am)
 			row := store.MessageRow{
-				UUID:              rec.UUID,
-				SessionID:         rec.SessionID,
-				ProjectSlug:       slug,
-				ParentUUID:        rec.ParentUUID,
-				Role:              "assistant",
-				Model:             am.Model,
-				Ts:                rec.Timestamp,
-				InputTokens:       am.Usage.InputTokens,
-				OutputTokens:      am.Usage.OutputTokens,
-				CacheCreateTokens: am.Usage.CacheCreationInputTokens,
-				CacheReadTokens:   am.Usage.CacheReadInputTokens,
-				ServiceTier:       am.Usage.ServiceTier,
-				Text:              text,
-				Preview:           parser.Preview(text),
+				UUID:                rec.UUID,
+				SessionID:           rec.SessionID,
+				ProjectSlug:         slug,
+				ParentUUID:          rec.ParentUUID,
+				Role:                "assistant",
+				Model:               am.Model,
+				Ts:                  rec.Timestamp,
+				InputTokens:         am.Usage.InputTokens,
+				OutputTokens:        am.Usage.OutputTokens,
+				CacheCreateTokens:   am.Usage.CacheCreationInputTokens,
+				CacheCreate5mTokens: am.Usage.CacheCreation.Ephemeral5mInputTokens,
+				CacheCreate1hTokens: am.Usage.CacheCreation.Ephemeral1hInputTokens,
+				CacheReadTokens:     am.Usage.CacheReadInputTokens,
+				ServiceTier:         am.Usage.ServiceTier,
+				Text:                text,
+				Preview:             parser.Preview(text),
 			}
 			for _, c := range am.Content {
 				if c.Type == "thinking" {
@@ -195,6 +200,18 @@ func (idx *Indexer) indexFile(
 				Text:        text,
 				Preview:     parser.Preview(text),
 			})
+		case parser.TypeAITitle:
+			if rec.AITitle != "" {
+				aiTitle = rec.AITitle
+			}
+		case parser.TypeCustomTitle:
+			if rec.CustomTitle != "" {
+				customTitle = rec.CustomTitle
+			}
+		case parser.TypeAgentName:
+			if rec.AgentName != "" {
+				agentName = rec.AgentName
+			}
 		}
 		return nil
 	})
@@ -239,6 +256,9 @@ func (idx *Indexer) indexFile(
 			StartedAt:    startedAt,
 			EndedAt:      endedAt,
 			MessageCount: len(msgs),
+			AITitle:      aiTitle,
+			CustomTitle:  customTitle,
+			AgentName:    agentName,
 		}); err != nil {
 			return 0, 0, err
 		}
@@ -255,6 +275,12 @@ func (idx *Indexer) indexFile(
 		// On incremental: refresh ended_at + message_count from the actual
 		// table state. Project/session base metadata is left as-is.
 		if err := idx.store.BumpSessionActivity(ctx, sessionID, endedAt); err != nil {
+			return 0, 0, err
+		}
+		// Title records normally appear once near session start; on rare
+		// occasion a custom-title is set mid-session and lands in an
+		// incremental batch — write it through without disturbing other fields.
+		if err := idx.store.UpdateSessionTitles(ctx, sessionID, aiTitle, customTitle, agentName); err != nil {
 			return 0, 0, err
 		}
 	}

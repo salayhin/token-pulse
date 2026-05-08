@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 )
 
 type ExportScope string
@@ -59,7 +60,7 @@ func (e *Engine) allSessions(ctx context.Context) ([]SessionSummary, error) {
 	var out []SessionSummary
 	cursor := ""
 	for {
-		resp, err := e.Sessions(ctx, "", cursor, 200)
+		resp, err := e.Sessions(ctx, "", cursor, time.Time{}, time.Time{}, 200)
 		if err != nil {
 			return nil, err
 		}
@@ -87,14 +88,19 @@ func writeOut[T any](format ExportFormat, w io.Writer, rows []T, csvFn func(*csv
 }
 
 func dailyToCSV(w *csv.Writer, rows []DailyRow) error {
-	if err := w.Write([]string{"date", "sessions", "messages", "input_tokens", "output_tokens", "cache_create_tokens", "cache_read_tokens", "cost_usd", "net_cache_savings_usd"}); err != nil {
+	if err := w.Write([]string{
+		"date", "sessions", "messages", "input_tokens", "output_tokens",
+		"cache_create_tokens", "cache_create_5m_tokens", "cache_create_1h_tokens",
+		"cache_read_tokens", "cost_usd", "net_cache_savings_usd",
+	}); err != nil {
 		return err
 	}
 	for _, r := range rows {
 		if err := w.Write([]string{
 			r.Date, itoa(r.Sessions), itoa(r.Messages),
 			itoa(r.InputTokens), itoa(r.OutputTokens),
-			itoa(r.CacheCreateTokens), itoa(r.CacheReadTokens),
+			itoa(r.CacheCreateTokens), itoa(r.CacheCreate5mTokens), itoa(r.CacheCreate1hTokens),
+			itoa(r.CacheReadTokens),
 			ftoa(r.CostUSD), ftoa(r.NetCacheSavingsUSD),
 		}); err != nil {
 			return err
@@ -104,12 +110,17 @@ func dailyToCSV(w *csv.Writer, rows []DailyRow) error {
 }
 
 func sessionsToCSV(w *csv.Writer, rows []SessionSummary) error {
-	if err := w.Write([]string{"id", "project_slug", "git_branch", "started_at", "ended_at", "message_count", "tool_calls", "cost_usd", "first_prompt"}); err != nil {
+	if err := w.Write([]string{
+		"id", "title", "custom_title", "agent_name", "ai_title",
+		"project_slug", "git_branch", "started_at", "ended_at",
+		"message_count", "tool_calls", "cost_usd", "first_prompt",
+	}); err != nil {
 		return err
 	}
 	for _, r := range rows {
 		if err := w.Write([]string{
-			r.ID, r.ProjectSlug, r.GitBranch, r.StartedAt, r.EndedAt,
+			r.ID, r.DisplayTitle, r.CustomTitle, r.AgentName, r.AITitle,
+			r.ProjectSlug, r.GitBranch, r.StartedAt, r.EndedAt,
 			itoa(r.MessageCount), itoa(r.ToolCalls), ftoa(r.CostUSD), r.FirstPrompt,
 		}); err != nil {
 			return err

@@ -82,6 +82,8 @@ func (e *Engine) fillProjectStat(ctx context.Context, p *ProjectStat) (*ProjectS
 		SELECT m.model,
 		       COALESCE(SUM(m.input_tokens),0),
 		       COALESCE(SUM(m.output_tokens),0),
+		       COALESCE(SUM(m.cache_create_5m_tokens),0),
+		       COALESCE(SUM(m.cache_create_1h_tokens),0),
 		       COALESCE(SUM(m.cache_create_tokens),0),
 		       COALESCE(SUM(m.cache_read_tokens),0)
 		FROM messages m
@@ -94,16 +96,16 @@ func (e *Engine) fillProjectStat(ctx context.Context, p *ProjectStat) (*ProjectS
 	defer rows.Close()
 	for rows.Next() {
 		var model string
-		var in, out, cc, cr int
-		if err := rows.Scan(&model, &in, &out, &cc, &cr); err != nil {
+		var in, out, c5m, c1h, cLegacy, cr int
+		if err := rows.Scan(&model, &in, &out, &c5m, &c1h, &cLegacy, &cr); err != nil {
 			return nil, err
 		}
 		p.InputTokens += in
 		p.OutputTokens += out
-		p.CacheCreate += cc
+		p.CacheCreate += cLegacy
 		p.CacheRead += cr
 		pricing := e.cfg.PricingFor(model)
-		p.CostUSD += CostUSD(pricing, in, out, cc, cr)
+		p.CostUSD += CostUSD(pricing, in, out, c5m, c1h, cLegacy, cr)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

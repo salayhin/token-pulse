@@ -110,9 +110,9 @@ func TestCalculatePercentages(t *testing.T) {
 		wantPercent map[string]float64
 	}{
 		{
-			name:   "simple",
-			counts: map[string]int{"a": 5, "b": 5},
-			wantTotal: 10,
+			name:        "simple",
+			counts:      map[string]int{"a": 5, "b": 5},
+			wantTotal:   10,
 			wantPercent: map[string]float64{"a": 50.0, "b": 50.0},
 		},
 		{

@@ -105,6 +105,8 @@ func (e *Engine) costAndSavings(ctx context.Context, from, to time.Time) (float6
 	q := `SELECT model,
 		COALESCE(SUM(input_tokens),0),
 		COALESCE(SUM(output_tokens),0),
+		COALESCE(SUM(cache_create_5m_tokens),0),
+		COALESCE(SUM(cache_create_1h_tokens),0),
 		COALESCE(SUM(cache_create_tokens),0),
 		COALESCE(SUM(cache_read_tokens),0)
 		FROM messages WHERE role='assistant'`
@@ -120,27 +122,29 @@ func (e *Engine) costAndSavings(ctx context.Context, from, to time.Time) (float6
 	var totalCost, totalSaved float64
 	for rows.Next() {
 		var model string
-		var in, out, cc, cr int
-		if err := rows.Scan(&model, &in, &out, &cc, &cr); err != nil {
+		var in, out, c5m, c1h, cLegacy, cr int
+		if err := rows.Scan(&model, &in, &out, &c5m, &c1h, &cLegacy, &cr); err != nil {
 			return 0, 0, err
 		}
 		p := e.cfg.PricingFor(model)
-		totalCost += CostUSD(p, in, out, cc, cr)
-		totalSaved += NetCacheSavingsUSD(p, cc, cr)
+		totalCost += CostUSD(p, in, out, c5m, c1h, cLegacy, cr)
+		totalSaved += NetCacheSavingsUSD(p, c5m, c1h, cLegacy, cr)
 	}
 	return totalCost, totalSaved, rows.Err()
 }
 
 type DailyRow struct {
-	Date               string  `json:"date"`
-	Sessions           int     `json:"sessions"`
-	Messages           int     `json:"messages"`
-	InputTokens        int     `json:"input_tokens"`
-	OutputTokens       int     `json:"output_tokens"`
-	CacheCreateTokens  int     `json:"cache_create_tokens"`
-	CacheReadTokens    int     `json:"cache_read_tokens"`
-	CostUSD            float64 `json:"cost_usd"`
-	NetCacheSavingsUSD float64 `json:"net_cache_savings_usd"`
+	Date                string  `json:"date"`
+	Sessions            int     `json:"sessions"`
+	Messages            int     `json:"messages"`
+	InputTokens         int     `json:"input_tokens"`
+	OutputTokens        int     `json:"output_tokens"`
+	CacheCreateTokens   int     `json:"cache_create_tokens"`
+	CacheCreate5mTokens int     `json:"cache_create_5m_tokens"`
+	CacheCreate1hTokens int     `json:"cache_create_1h_tokens"`
+	CacheReadTokens     int     `json:"cache_read_tokens"`
+	CostUSD             float64 `json:"cost_usd"`
+	NetCacheSavingsUSD  float64 `json:"net_cache_savings_usd"`
 }
 
 func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
@@ -159,6 +163,8 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 		       COALESCE(SUM(input_tokens),0),
 		       COALESCE(SUM(output_tokens),0),
 		       COALESCE(SUM(cache_create_tokens),0),
+		       COALESCE(SUM(cache_create_5m_tokens),0),
+		       COALESCE(SUM(cache_create_1h_tokens),0),
 		       COALESCE(SUM(cache_read_tokens),0),
 		       COALESCE(GROUP_CONCAT(DISTINCT model), '')
 		FROM messages WHERE role='assistant'
@@ -173,14 +179,17 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 		var r DailyRow
 		var modelsCSV string
 		if err := rows.Scan(&r.Date, &r.Sessions, &r.Messages, &r.InputTokens, &r.OutputTokens,
-			&r.CacheCreateTokens, &r.CacheReadTokens, &modelsCSV); err != nil {
+			&r.CacheCreateTokens, &r.CacheCreate5mTokens, &r.CacheCreate1hTokens,
+			&r.CacheReadTokens, &modelsCSV); err != nil {
 			return nil, err
 		}
 		// Approximate per-day cost using the dominant-model pricing (good enough for daily roll-up).
 		// For exact per-model split, we issue a second query — keeping this lightweight for now.
 		p := e.cfg.PricingFor(firstModel(modelsCSV))
-		r.CostUSD = CostUSD(p, r.InputTokens, r.OutputTokens, r.CacheCreateTokens, r.CacheReadTokens)
-		r.NetCacheSavingsUSD = NetCacheSavingsUSD(p, r.CacheCreateTokens, r.CacheReadTokens)
+		r.CostUSD = CostUSD(p, r.InputTokens, r.OutputTokens,
+			r.CacheCreate5mTokens, r.CacheCreate1hTokens, r.CacheCreateTokens, r.CacheReadTokens)
+		r.NetCacheSavingsUSD = NetCacheSavingsUSD(p,
+			r.CacheCreate5mTokens, r.CacheCreate1hTokens, r.CacheCreateTokens, r.CacheReadTokens)
 		out = append(out, r)
 	}
 	return out, rows.Err()

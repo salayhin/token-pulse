@@ -13,10 +13,27 @@ type Event struct {
 type EventBus struct {
 	mu   sync.RWMutex
 	subs map[chan Event]struct{}
+	done chan struct{}
 }
 
 func NewEventBus() *EventBus {
-	return &EventBus{subs: map[chan Event]struct{}{}}
+	return &EventBus{subs: map[chan Event]struct{}{}, done: make(chan struct{})}
+}
+
+// Done returns a channel closed when the bus is shutting down. SSE handlers
+// select on this so http.Server.Shutdown isn't forced to wait the full
+// graceful-shutdown timeout for long-lived event streams to drain.
+func (b *EventBus) Done() <-chan struct{} { return b.done }
+
+// Close signals all subscribers to exit. Safe to call multiple times.
+func (b *EventBus) Close() {
+	b.mu.Lock()
+	select {
+	case <-b.done:
+	default:
+		close(b.done)
+	}
+	b.mu.Unlock()
 }
 
 func (b *EventBus) Subscribe() chan Event {

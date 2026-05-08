@@ -20,6 +20,7 @@ const (
 	TypeAITitle        RecordType = "ai-title"
 	TypeCustomTitle    RecordType = "custom-title"
 	TypeAgentName      RecordType = "agent-name"
+	TypePRLink         RecordType = "pr-link"
 )
 
 // Record is the union of fields seen across all session JSONL record types.
@@ -38,6 +39,12 @@ type Record struct {
 	IsSidechain bool            `json:"isSidechain,omitempty"`
 	Message     json.RawMessage `json:"message,omitempty"`
 	Title       string          `json:"title,omitempty"`
+
+	// Per-record-type single-field payloads. Each only populates when Type
+	// matches; consumers switch on Type to decide which to read.
+	AITitle     string `json:"aiTitle,omitempty"`     // ai-title records
+	CustomTitle string `json:"customTitle,omitempty"` // custom-title records
+	AgentName   string `json:"agentName,omitempty"`   // agent-name records
 }
 
 type AssistantMessage struct {
@@ -51,11 +58,22 @@ type AssistantMessage struct {
 }
 
 type Usage struct {
-	InputTokens              int    `json:"input_tokens"`
-	OutputTokens             int    `json:"output_tokens"`
-	CacheCreationInputTokens int    `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int    `json:"cache_read_input_tokens"`
-	ServiceTier              string `json:"service_tier"`
+	InputTokens int `json:"input_tokens"`
+	// CacheCreationInputTokens is the wire-format sum across all TTLs (5m + 1h).
+	// Always equals CacheCreation.Ephemeral5mInputTokens + CacheCreation.Ephemeral1hInputTokens
+	// when the split is present; on older payloads only this sum is populated.
+	CacheCreationInputTokens int             `json:"cache_creation_input_tokens"`
+	CacheCreation            CacheCreationTL `json:"cache_creation"`
+	CacheReadInputTokens     int             `json:"cache_read_input_tokens"`
+	OutputTokens             int             `json:"output_tokens"`
+	ServiceTier              string          `json:"service_tier"`
+}
+
+// CacheCreationTL splits cache-creation tokens by ephemeral TTL — Anthropic
+// charges the 1h cache at a higher rate than the 5m cache.
+type CacheCreationTL struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
 }
 
 // ContentBlock covers text / thinking / tool_use / tool_result variants.
