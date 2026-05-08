@@ -1,5 +1,10 @@
 package analytics
 
+type jsonlRecord struct {
+	Type    string                 `json:"type"`
+	Message map[string]interface{} `json:"message"`
+}
+
 // extractSkillFromToolUse returns the skill name if this is a Skill tool use, or ("", false)
 func extractSkillFromToolUse(toolUse map[string]interface{}) (string, bool) {
 	// Only process Skill tool

@@ -1,5 +1,10 @@
 package analytics
 
+type percentageResult struct {
+	Total       int
+	Percentages map[string]float64
+}
+
 type SkillUsage struct {
 	Name       string  `json:"name"`
 	Count      int     `json:"count"`
