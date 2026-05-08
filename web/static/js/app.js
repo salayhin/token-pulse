@@ -5,6 +5,13 @@ const fmtInt = n => (n || 0).toLocaleString();
 const fmtPct = n => ((n || 0) * 100).toFixed(1) + '%';
 const shortTs = s => (s || '').slice(0, 16);
 
+// Use whenever interpolating user-controlled text into an innerHTML template.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function humanDuration(startISO, endISO) {
   if (!startISO || !endISO) return '—';
   const a = Date.parse(startISO.replace(' ', 'T') + 'Z');
@@ -32,6 +39,69 @@ function openSessionInNewTab(id) {
   window.open(url, '_blank', 'noopener');
 }
 
+function renderSkillsList(items, containerSelector, allSelector, buttonSelector) {
+  const container = document.querySelector(containerSelector);
+  const allContainer = document.querySelector(allSelector);
+  const toggleBtn = document.querySelector(buttonSelector);
+
+  if (!container || !items || items.length === 0) {
+    if (container) container.innerHTML = '<div style="color:#666;">—</div>';
+    if (toggleBtn) toggleBtn.classList.add('hidden');
+    return;
+  }
+
+  const top10 = items.slice(0, 10);
+  const hasMore = items.length > 10;
+
+  // Render top 10
+  container.innerHTML = top10.map(item => `
+    <div class="skills-plugins-item">
+      <span class="name">${escapeHtml(item.name)}</span>
+      <span class="percentage">${item.percentage.toFixed(1)}%</span>
+    </div>
+  `).join('');
+
+  // Render all (hidden)
+  if (hasMore && allContainer) {
+    allContainer.innerHTML = items.map(item => `
+      <div class="skills-plugins-item">
+        <span class="name">${escapeHtml(item.name)}</span>
+        <span class="percentage">${item.percentage.toFixed(1)}%</span>
+      </div>
+    `).join('');
+
+    if (toggleBtn) {
+      toggleBtn.classList.remove('hidden');
+      toggleBtn.textContent = 'Show all';
+      toggleBtn.addEventListener('click', function() {
+        const isHidden = allContainer.classList.contains('hidden');
+        allContainer.classList.toggle('hidden');
+        this.textContent = isHidden ? 'Hide' : 'Show all';
+      });
+    }
+  }
+}
+
+async function loadOverviewSkills() {
+  try {
+    const data = await getJSON('/api/v1/skills');
+    renderSkillsList(data.skills, '#skills-list', '#skills-all', '#skills-show-all');
+    renderSkillsList(data.plugins, '#plugins-list', '#plugins-all', '#plugins-show-all');
+  } catch (err) {
+    console.error('Failed to load skills:', err);
+    document.querySelector('#skills-list').innerHTML = '<div style="color:#f55;">Error loading skills</div>';
+  }
+}
+
+async function loadSessionSkills(sessionId) {
+  try {
+    const data = await getJSON(`/api/v1/sessions/${encodeURIComponent(sessionId)}/skills`);
+    renderSkillsList(data.skills, '#session-skills-list', '#session-skills-all', '#session-skills-show-all');
+    renderSkillsList(data.plugins, '#session-plugins-list', '#session-plugins-all', '#session-plugins-show-all');
+  } catch (err) {
+    console.error('Failed to load session skills:', err);
+  }
+}
 
 // ---------- Theme ----------
 function applyTheme(t) {
@@ -166,6 +236,7 @@ async function loadOverview() {
   fillDailyTable(daily.daily || []);
   trendsChartRender(trends.trends || []);
   toolsChartRender(tools.tools || []);
+  loadOverviewSkills();
 }
 
 // ---------- Projects ----------
@@ -184,7 +255,7 @@ async function loadProjects() {
 }
 
 // ---------- Sessions ----------
-const sessionsState = { project: '', cursor: '', loaded: 0 };
+const sessionsState = { project: '', cursor: '', loaded: 0, from: '', to: '' };
 
 async function loadSessions(reset) {
   if (reset) {
@@ -193,30 +264,65 @@ async function loadSessions(reset) {
     document.querySelector('#sessions-table tbody').innerHTML = '';
     document.getElementById('session-detail').classList.add('hidden');
     document.getElementById('sessions-table').classList.remove('hidden');
+    document.getElementById('sessions-filter').classList.remove('hidden');
     document.querySelector('.pager').classList.remove('hidden');
   }
   const params = new URLSearchParams({ limit: '50' });
   if (sessionsState.project) params.set('project', sessionsState.project);
   if (sessionsState.cursor) params.set('cursor', sessionsState.cursor);
+  if (sessionsState.from) params.set('from', sessionsState.from);
+  if (sessionsState.to) params.set('to', sessionsState.to);
   const data = await getJSON('/api/v1/sessions?' + params.toString());
   const tbody = document.querySelector('#sessions-table tbody');
   for (const s of data.sessions || []) {
     const tr = document.createElement('tr');
+    const titleCell = s.display_title
+      ? `<span class="session-title">${escapeHtml(s.display_title)}</span>`
+      : `<span class="session-id">${s.id.slice(0, 8)}</span>`;
     tr.innerHTML = `
-      <td>${shortTs(s.ended_at)}</td><td>${s.project_slug}</td><td>${s.git_branch || ''}</td>
+      <td>${shortTs(s.ended_at)}</td><td>${titleCell}</td>
+      <td>${s.project_slug}</td><td>${s.git_branch || ''}</td>
       <td>${fmtInt(s.message_count)}</td><td>${fmtInt(s.tool_calls)}</td>
-      <td>${fmtUSD(s.cost_usd)}</td><td>${(s.first_prompt || '').slice(0, 80)}</td>`;
-    tr.title = 'Open in new tab';
-    tr.addEventListener('click', () => openSessionInNewTab(s.id));
+      <td>${fmtUSD(s.cost_usd)}</td><td>${escapeHtml((s.first_prompt || '').slice(0, 80))}</td>`;
+    tr.title = 'Open session';
+    tr.addEventListener('click', () => showSession(s.id));
     tbody.appendChild(tr);
   }
   sessionsState.loaded += (data.sessions || []).length;
   sessionsState.cursor = data.next_cursor || '';
-  const meta = sessionsState.project ? `· ${sessionsState.project}` : '';
+  const parts = [];
+  if (sessionsState.project) parts.push(sessionsState.project);
+  if (sessionsState.from || sessionsState.to) {
+    parts.push(`${sessionsState.from || '…'} → ${sessionsState.to || sessionsState.from || '…'}`);
+  }
+  const meta = parts.length ? '· ' + parts.join(' · ') : '';
   document.getElementById('sessions-meta').textContent = `(${sessionsState.loaded} loaded ${meta})`;
   document.getElementById('sessions-more').style.display = sessionsState.cursor ? '' : 'none';
 }
 document.getElementById('sessions-more').addEventListener('click', () => loadSessions(false));
+
+document.getElementById('sessions-filter').addEventListener('submit', e => {
+  e.preventDefault();
+  const fromEl = document.getElementById('sessions-from');
+  const toEl = document.getElementById('sessions-to');
+  let from = fromEl.value;
+  let to = toEl.value;
+  // If only one bound is set, mirror it onto the other so the user gets a single-day filter.
+  if (from && !to) { to = from; toEl.value = from; }
+  if (to && !from) { from = to; fromEl.value = to; }
+  if (from && to && from > to) { [from, to] = [to, from]; fromEl.value = from; toEl.value = to; }
+  sessionsState.from = from;
+  sessionsState.to = to;
+  loadSessions(true);
+});
+
+document.getElementById('sessions-clear').addEventListener('click', () => {
+  document.getElementById('sessions-from').value = '';
+  document.getElementById('sessions-to').value = '';
+  sessionsState.from = '';
+  sessionsState.to = '';
+  loadSessions(true);
+});
 
 let sdTimelineChart, sdToolsChart;
 async function showSession(id, opts = {}) {
@@ -224,13 +330,16 @@ async function showSession(id, opts = {}) {
   const d = await getJSON('/api/v1/sessions/' + encodeURIComponent(id));
   if (!d) return;
   document.getElementById('sessions-table').classList.add('hidden');
+  document.getElementById('sessions-filter').classList.add('hidden');
   document.querySelector('.pager').classList.add('hidden');
   document.getElementById('session-detail').classList.remove('hidden');
-  document.getElementById('sd-title').textContent = id;
+  const title = d.session.display_title || id;
+  document.getElementById('sd-title').textContent = title;
+  const idSuffix = d.session.display_title ? ` · ${id.slice(0, 8)}` : '';
   document.getElementById('sd-meta').textContent =
     `${d.session.project_slug} · branch ${d.session.git_branch || '—'} · ` +
     `${d.session.message_count} messages · ${fmtUSD(d.session.cost_usd)} · ` +
-    `${shortTs(d.session.started_at)} → ${shortTs(d.session.ended_at)}`;
+    `${shortTs(d.session.started_at)} → ${shortTs(d.session.ended_at)}${idSuffix}`;
 
   // Cards
   document.getElementById('sd-cost').textContent = fmtUSD(d.session.cost_usd);
@@ -286,7 +395,8 @@ async function showSession(id, opts = {}) {
 
   const thread = document.getElementById('sd-thread');
   thread.innerHTML = '';
-  for (const m of d.messages || []) {
+  // Render newest-first; the timeline chart still uses ascending order.
+  for (const m of [...(d.messages || [])].reverse()) {
     if (m.role === 'user-tool-result') continue;
     const div = document.createElement('div');
     div.className = 'turn ' + m.role;
@@ -300,6 +410,8 @@ async function showSession(id, opts = {}) {
     div.querySelector('.body').textContent = m.text || m.preview || '';
     thread.appendChild(div);
   }
+
+  loadSessionSkills(id);
 }
 document.getElementById('session-back').addEventListener('click', () => loadSessions(true));
 
@@ -396,8 +508,8 @@ async function runSearch(q, opts = {}) {
     div.innerHTML = `
       <div class="meta">${shortTs(h.ts)} · ${h.project_slug} / ${h.role} · session ${h.session_id.slice(0,8)}</div>
       <div class="snip">${h.snippet}</div>`;
-    div.title = 'Open in new tab';
-    div.addEventListener('click', () => openSessionInNewTab(h.session_id));
+    div.title = 'Open session';
+    div.addEventListener('click', () => setHash('sessions/' + encodeURIComponent(h.session_id)));
     out.appendChild(div);
   }
 }
