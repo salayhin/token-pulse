@@ -65,6 +65,18 @@
         <h2>Top tools</h2>
         <canvas id="tools-chart"></canvas>
       </div>
+      <div class="chart-box">
+        <h2>Skills</h2>
+        <div id="skills-list" class="skills-plugins-list"></div>
+        <button id="skills-show-all" class="toggle-btn hidden">Show all</button>
+        <div id="skills-all" class="skills-plugins-all hidden"></div>
+      </div>
+      <div class="chart-box">
+        <h2>Plugins</h2>
+        <div id="plugins-list" class="skills-plugins-list"></div>
+        <button id="plugins-show-all" class="toggle-btn hidden">Show all</button>
+        <div id="plugins-all" class="skills-plugins-all hidden"></div>
+      </div>
     </div>
 
     <h2>Daily breakdown</h2>
@@ -90,9 +102,15 @@
   <!-- Sessions tab -->
   <section class="view hidden" id="view-sessions">
     <h2>Sessions <span class="muted" id="sessions-meta"></span></h2>
+    <form id="sessions-filter" class="sessions-filter">
+      <label>From <input type="date" id="sessions-from"></label>
+      <label>To <input type="date" id="sessions-to"></label>
+      <button type="submit" class="btn">Search</button>
+      <button type="button" class="btn" id="sessions-clear">Clear</button>
+    </form>
     <table id="sessions-table">
       <thead>
-        <tr><th>Ended</th><th>Project</th><th>Branch</th><th>Msgs</th><th>Tools</th><th>Cost</th><th>First prompt</th></tr>
+        <tr><th>Ended</th><th>Title</th><th>Project</th><th>Branch</th><th>Msgs</th><th>Tools</th><th>Cost</th><th>First prompt</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -100,10 +118,19 @@
       <button id="sessions-more" class="btn">Load more</button>
     </div>
 
+    <h3 style="margin-top: 2rem;">Session Skills</h3>
+    <div id="session-skills-list" class="skills-plugins-list"></div>
+    <button id="session-skills-show-all" class="toggle-btn hidden">Show all</button>
+    <div id="session-skills-all" class="skills-plugins-all hidden"></div>
+
+    <h3 style="margin-top: 1.5rem;">Session Plugins</h3>
+    <div id="session-plugins-list" class="skills-plugins-list"></div>
+    <button id="session-plugins-show-all" class="toggle-btn hidden">Show all</button>
+    <div id="session-plugins-all" class="skills-plugins-all hidden"></div>
+
     <div id="session-detail" class="hidden">
       <div id="sd-toolbar">
         <button class="btn back" id="session-back">← Back</button>
-        <a class="btn focus-only" href="/">← Dashboard</a>
         <button class="btn focus-only" id="sd-open-in-app">Open in app</button>
         <button class="btn focus-only" id="sd-copy-link">Copy link</button>
         <button class="icon-btn focus-only" id="sd-theme-toggle" title="toggle theme">◐</button>
