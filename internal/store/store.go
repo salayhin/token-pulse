@@ -94,9 +94,89 @@ func (s *Store) timed(op string, fn func() error) error {
 	return err
 }
 
+// migration is one versioned, atomic schema change. Each fn runs inside its
+// own transaction; on success the runner records the version in
+// schema_version so the migration never runs twice. New schema changes go at
+// the bottom of the migrations slice — never edit a migration that has
+// shipped, since existing DBs have already applied it and won't replay it.
+type migration struct {
+	version int
+	name    string
+	fn      func(context.Context, *sql.Tx) error
+}
+
+// migrations is the ordered list of schema versions. Append-only.
+var migrations = []migration{
+	{1, "initial_schema", migrateV1InitialSchema},
+	{2, "dedup_tool_calls_unique", migrateV2DedupToolCallsUnique},
+}
+
 func (s *Store) migrate() error {
+	ctx := context.Background()
+	// Bootstrap schema_version. Existing DBs may have the legacy
+	// single-column form (version INTEGER PRIMARY KEY) created by the old
+	// migrate() but never populated; tolerate that by ADDing the new
+	// columns with duplicate-column-error suppression.
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (
+		version    INTEGER PRIMARY KEY,
+		name       TEXT NOT NULL DEFAULT '',
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		return fmt.Errorf("migrate: bootstrap schema_version: %w", err)
+	}
+	for _, alter := range []string{
+		`ALTER TABLE schema_version ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE schema_version ADD COLUMN applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+	} {
+		if _, err := s.db.ExecContext(ctx, alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrate: schema_version alter: %w (%s)", err, alter)
+		}
+	}
+	var current int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
+		return fmt.Errorf("migrate: read current version: %w", err)
+	}
+	for _, m := range migrations {
+		if m.version <= current {
+			continue
+		}
+		if err := s.applyMigration(ctx, m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) applyMigration(ctx context.Context, m migration) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("migrate v%d %s: begin: %w", m.version, m.name, err)
+	}
+	defer tx.Rollback()
+	if err := m.fn(ctx, tx); err != nil {
+		return fmt.Errorf("migrate v%d %s: %w", m.version, m.name, err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO schema_version(version, name, applied_at) VALUES(?,?,?)`,
+		m.version, m.name, time.Now().UTC()); err != nil {
+		return fmt.Errorf("migrate v%d %s: record version: %w", m.version, m.name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrate v%d %s: commit: %w", m.version, m.name, err)
+	}
+	if s.log != nil {
+		s.log.Info("migration applied", "version", m.version, "name", m.name)
+	}
+	return nil
+}
+
+// migrateV1InitialSchema brings a DB up to the baseline schema that shipped
+// before versioned migrations existed. All statements are idempotent so the
+// step is a no-op on DBs that already have these tables (i.e. every existing
+// install on disk before v2 was introduced).
+func migrateV1InitialSchema(ctx context.Context, tx *sql.Tx) error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)`,
 		`CREATE TABLE IF NOT EXISTS projects (
 			slug TEXT PRIMARY KEY,
 			cwd  TEXT
@@ -117,7 +197,7 @@ func (s *Store) migrate() error {
 			uuid          TEXT PRIMARY KEY,
 			session_id    TEXT NOT NULL,
 			parent_uuid   TEXT,
-			role          TEXT NOT NULL,            -- 'user' | 'assistant' | 'user-tool-result'
+			role          TEXT NOT NULL,
 			model         TEXT,
 			ts            DATETIME NOT NULL,
 			input_tokens  INTEGER DEFAULT 0,
@@ -126,8 +206,8 @@ func (s *Store) migrate() error {
 			cache_read_tokens   INTEGER DEFAULT 0,
 			service_tier  TEXT,
 			has_thinking  INTEGER DEFAULT 0,
-			text          TEXT,                     -- extracted message body
-			preview       TEXT                      -- first ~200 chars
+			text          TEXT,
+			preview       TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)`,
@@ -156,41 +236,50 @@ func (s *Store) migrate() error {
 			mtime    DATETIME NOT NULL,
 			indexed_at DATETIME NOT NULL
 		)`,
-		// Unique constraint backs INSERT OR IGNORE in InsertToolCalls so an
-		// incremental reindex that re-reads the boundary record (e.g. after a
-		// partial-write recovery) doesn't duplicate tool_calls. Partial index
-		// excludes empty IDs to remain safe against legacy rows that lacked a
-		// tool_use_id; in practice every Claude tool_use block carries one.
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_calls_unique
-			ON tool_calls(message_uuid, tool_use_id)
-			WHERE tool_use_id != ''`,
 	}
 	for _, q := range stmts {
-		if _, err := s.db.Exec(q); err != nil {
-			return fmt.Errorf("migrate: %w (%s)", err, q)
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return fmt.Errorf("%w (%s)", err, q)
 		}
 	}
-	// Idempotent column additions for incremental indexing. SQLite has no
-	// ADD COLUMN IF NOT EXISTS, so swallow "duplicate column" errors and
-	// surface anything else.
+	// SQLite has no ADD COLUMN IF NOT EXISTS, so swallow "duplicate column"
+	// for compatibility with DBs that already have these columns from
+	// pre-versioned migrations.
 	for _, alter := range []string{
 		`ALTER TABLE files_seen ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE files_seen ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`,
-		// Split cache_create_tokens by ephemeral TTL. The legacy column stays
-		// (it's the wire-format sum, populated for every row); the split is
-		// populated only for rows indexed after this migration. Cost analytics
-		// fall back to the legacy column for unallocated tokens — see CostUSD.
+		// Cache-create tokens split by ephemeral TTL — see CostUSD in analytics.
 		`ALTER TABLE messages ADD COLUMN cache_create_5m_tokens INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN cache_create_1h_tokens INTEGER NOT NULL DEFAULT 0`,
-		// Session identity beyond the UUID. Populated from ai-title /
-		// custom-title / agent-name records emitted by Claude Code.
 		`ALTER TABLE sessions ADD COLUMN ai_title     TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN custom_title TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN agent_name   TEXT NOT NULL DEFAULT ''`,
 	} {
-		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("migrate: %w (%s)", err, alter)
+		if _, err := tx.ExecContext(ctx, alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("%w (%s)", err, alter)
 		}
+	}
+	return nil
+}
+
+// migrateV2DedupToolCallsUnique removes legacy duplicate (message_uuid,
+// tool_use_id) rows that accumulated before the unique index existed, then
+// adds the partial unique index. INSERT OR IGNORE in InsertToolCalls relies
+// on this index for incremental reindex idempotency.
+func migrateV2DedupToolCallsUnique(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tool_calls
+		WHERE tool_use_id != ''
+		  AND id NOT IN (
+		    SELECT MIN(id) FROM tool_calls
+		    WHERE tool_use_id != ''
+		    GROUP BY message_uuid, tool_use_id
+		  )`); err != nil {
+		return fmt.Errorf("dedup tool_calls: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_calls_unique
+		ON tool_calls(message_uuid, tool_use_id)
+		WHERE tool_use_id != ''`); err != nil {
+		return fmt.Errorf("create unique index: %w", err)
 	}
 	return nil
 }
