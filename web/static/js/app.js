@@ -218,11 +218,10 @@ function toolsChartRender(tools) {
 }
 
 async function loadOverview() {
-  const [stats, daily, cache, tools, trends, proj] = await Promise.all([
+  const [stats, daily, cache, trends, proj] = await Promise.all([
     getJSON('/api/v1/stats'),
     getJSON('/api/v1/stats/daily?days=30'),
     getJSON('/api/v1/cache'),
-    getJSON('/api/v1/tools?top=15'),
     getJSON('/api/v1/stats/trends?days=30'),
     getJSON('/api/v1/stats/projections'),
   ]);
@@ -233,7 +232,7 @@ async function loadOverview() {
   fillProjection(proj);
   fillDailyTable(daily.daily || []);
   trendsChartRender(trends.trends || []);
-  toolsChartRender(tools.tools || []);
+  toolsChartRender([]);
   loadOverviewSkills();
 }
 
