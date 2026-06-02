@@ -81,10 +81,14 @@ func writeOut[T any](format ExportFormat, w io.Writer, rows []T, csvFn func(*csv
 }
 
 func dailyToCSV(w *csv.Writer, rows []DailyRow) error {
+	// net_cache_savings_usd intentionally omitted from the CSV export — the
+	// metric is hypothetical (cost vs. a counterfactual no-cache world) and
+	// was confusing users. JSON DailyRow keeps the field for API parity;
+	// CSV is the "report" surface and stays focused on actual spend.
 	if err := w.Write([]string{
 		"date", "sessions", "messages", "input_tokens", "output_tokens",
 		"cache_create_tokens", "cache_create_5m_tokens", "cache_create_1h_tokens",
-		"cache_read_tokens", "cost_usd", "net_cache_savings_usd",
+		"cache_read_tokens", "cost_usd",
 	}); err != nil {
 		return err
 	}
@@ -94,7 +98,7 @@ func dailyToCSV(w *csv.Writer, rows []DailyRow) error {
 			itoa(r.InputTokens), itoa(r.OutputTokens),
 			itoa(r.CacheCreateTokens), itoa(r.CacheCreate5mTokens), itoa(r.CacheCreate1hTokens),
 			itoa(r.CacheReadTokens),
-			ftoa(r.CostUSD), ftoa(r.NetCacheSavingsUSD),
+			ftoa(r.CostUSD),
 		}); err != nil {
 			return err
 		}

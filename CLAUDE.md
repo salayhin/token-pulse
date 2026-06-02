@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make build              # CGO-disabled binary at bin/claude-token-lens
-make run                # go run ./cmd/claude-token-lens serve
+make build              # CGO-disabled binary at bin/tokenpulse
+make run                # go run ./cmd/tokenpulse serve
 make index              # one-time ingest of ~/.claude into SQLite
 make stats              # all-time terminal stats
 make test               # go test ./... -race -count=1
@@ -21,9 +21,9 @@ go test ./internal/indexer -race -count=1
 ```
 
 After `make build`:
-- `./bin/claude-token-lens index [--rebuild]` — incremental indexing; `--rebuild` forces full re-index
-- `./bin/claude-token-lens serve [--skip-index]` — dashboard at `http://127.0.0.1:3456`
-- `./bin/claude-token-lens stats [--today]`, `sessions {list,show,search}`, `tools show <name>`, `export --scope ... --format ...`
+- `./bin/tokenpulse index [--rebuild]` — incremental indexing; `--rebuild` forces full re-index
+- `./bin/tokenpulse serve [--skip-index]` — dashboard at `http://127.0.0.1:3456`
+- `./bin/tokenpulse stats [--today]`, `sessions {list,show,search}`, `tools show <name>`, `export --scope ... --format ...`
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Single Go binary with embedded SPA. Data flow:
 
 ### Package layout
 
-- `cmd/claude-token-lens/main.go` — Cobra entrypoint; wires every subcommand. The `serve` command also constructs an `alertingBus` shim that wraps `handlers.EventBus` so each `"updated"` event re-runs the daily-budget alert check.
+- `cmd/tokenpulse/main.go` — Cobra entrypoint; wires every subcommand. The `serve` command also constructs an `alertingBus` shim that wraps `handlers.EventBus` so each `"updated"` event re-runs the daily-budget alert check.
 - `internal/parser/` — JSONL → typed `Record`s. `ParseFile` is **resume-safe**: returns the byte offset *after* the last complete line; a partial trailing line does NOT advance the offset, so re-parsing from that offset re-reads the partial line in full. `types.go` is locked against real fixtures.
 - `internal/indexer/` — Walks `<claudeDir>/projects`, two-mode ingest per file: **incremental** (size+mtime unchanged → skip; size grew → parse from `state.LastOffset` only) or **full rebuild** (first-time, truncated, or `force=true`). Cost of a watcher tick is O(new bytes), not O(session size).
 - `internal/store/` — SQLite via `modernc.org/sqlite` (CGo-free). WAL mode, `busy_timeout=30000`, `MaxOpenConns=8`. `writeMu` serializes writes at the application layer to keep idle conns free for readers under contention. Inserts are batched at `insertMessagesBatch=500` per tx so the writer slot releases frequently. Slow writes (>1s) are counted in `slowWrites` and surfaced via `/api/v1/health`. Schema: `projects`, `sessions`, `messages`, `tool_calls`, `messages_fts` (FTS5), `file_state` (resume offsets).
@@ -60,13 +60,20 @@ Single Go binary with embedded SPA. Data flow:
 - `internal/server/handlers/eventbus.go` — Tiny SSE fan-out. Subscriber channels are buffered (16); a slow subscriber's events are **dropped**, never blocked.
 - `internal/watcher/` — fsnotify on `<claudeDir>/projects`. Debounces bursts (800ms) and uses a `pending` flag so concurrent file events do not stack reindex goroutines on SQLite's single writer. New project subdirs are auto-watched as they appear.
 - `internal/alerts/` — Daily-budget threshold check; macOS `osascript` notification when `alerts.notify=true`.
-- `internal/config/` — Viper. Lookup order: flag → env (`CTL_*`) → `./config.yaml` → `~/.config/claude-token-lens/config.yaml` → defaults. `PricingFor(model)` falls back to a longest-prefix match (e.g. `claude-sonnet-4-...` → `claude-sonnet-4` rates), then `Pricing.Fallback`.
+- `internal/config/` — Viper. Lookup order: flag → env (`TP_*`) → `./config.yaml` → `~/.config/tokenpulse/config.yaml` → defaults. `PricingFor(model)` falls back to a longest-prefix match (e.g. `claude-sonnet-4-...` → `claude-sonnet-4` rates), then `Pricing.Fallback`.
 - `web/` — `embed.FS`-served SPA (`index.html` + `static/`). No build step. Charts via vendored Chart.js.
+
+### Gotchas
+
+- **Incremental indexing relies on file mtime.** If you manually edit a JSONL file, its mtime won't change unless you explicitly touch it. Use `./bin/tokenpulse index --rebuild` to force a full re-index when testing parser or indexer changes.
+- **Cache create columns are split by TTL.** Pre-migration rows have only the legacy `cache_create_tokens` column; `splitCacheCreate()` treats unallocated tokens as 5m TTL. Run `index --rebuild` after a pricing update to backfill split columns and get accurate 1h pricing on old data.
+- **Settings changes don't trigger a full reindex.** Changing pricing via the settings UI re-analyzes existing data but doesn't reparse JSONL files. Edit config.yaml directly and run `index --rebuild` if you need to resync pricing with historical logs.
+- **SSE events drop on slow subscribers.** If a web client falls behind (slow network), its EventBus channel buffer fills and newer events are discarded. This is intentional (prevents blocking the reindex goroutine).
 
 ### Invariants worth preserving
 
 - **Server binds to `127.0.0.1` only.** This is a personal-use tool; do not expose it to a network interface or add auth/multi-user concepts (see `.claude/PLAN.md` "Out of scope").
-- **UTC by default.** All date bucketing uses `cfg.Location()`; users override via `timezone:` or `CTL_TIMEZONE`.
+- **UTC by default.** All date bucketing uses `cfg.Location()`; users override via `timezone:` or `TP_TIMEZONE`.
 - **Resume offsets matter.** `parser.ParseFile`'s rule that a partial line does not advance the offset is what makes incremental indexing correct under concurrent appends from Claude Code — preserve it.
 - **No CGo.** `modernc.org/sqlite` was chosen for clean cross-compile (`CGO_ENABLED=0` in Makefile, GoReleaser, and CI). Do not introduce a CGo dependency.
 - **Single writer discipline.** All store writes must go through methods that acquire `writeMu`. Long batches must split into ≤500-row transactions.
@@ -74,8 +81,8 @@ Single Go binary with embedded SPA. Data flow:
 ## Config & data paths
 
 - Default Claude data: `~/.claude/projects/<slug>/<session>.jsonl`
-- Default DB: `~/.config/claude-token-lens/data.db`
-- Override via `./config.yaml` (see `configs/config.yaml.example`) or `CTL_*` env vars (e.g. `CTL_SERVER_PORT=4000`, `CTL_TIMEZONE=Asia/Tokyo`).
+- Default DB: `~/.config/tokenpulse/data.db`
+- Override via `./config.yaml` (see `configs/config.yaml.example`) or `TP_*` env vars (e.g. `TP_SERVER_PORT=4000`, `TP_TIMEZONE=Asia/Tokyo`).
 
 ## CI / release
 

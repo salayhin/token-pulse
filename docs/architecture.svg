@@ -1,0 +1,200 @@
+<svg viewBox="0 0 1160 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace">
+
+  <!-- Title -->
+  <text x="580" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e1e1e">claude-token-lens — System Architecture</text>
+  <text x="580" y="54" text-anchor="middle" font-size="14" fill="#757575">Single Go binary  ·  Embedded SPA  ·  SQLite storage</text>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- ZONE: Source Data -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="20" y="72" width="200" height="110" rx="10" fill="#dbe4ff" fill-opacity="0.55" stroke="#4a9eed" stroke-width="1.5"/>
+  <text x="120" y="90" text-anchor="middle" font-size="12" font-weight="bold" fill="#2563eb">Source Data</text>
+  <rect x="36" y="98" width="168" height="68" rx="8" fill="#a5d8ff" stroke="#4a9eed" stroke-width="2"/>
+  <text x="120" y="119" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e3a5f">~/.claude/projects/</text>
+  <text x="120" y="136" text-anchor="middle" font-size="11" fill="#1e3a5f">&lt;slug&gt;/&lt;session&gt;.jsonl</text>
+  <text x="120" y="153" text-anchor="middle" font-size="10" fill="#2563eb">JSONL session logs</text>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- ZONE: Ingest Layer -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="20" y="210" width="200" height="260" rx="10" fill="#e5dbff" fill-opacity="0.55" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="120" y="228" text-anchor="middle" font-size="12" font-weight="bold" fill="#6d28d9">Ingest Layer</text>
+
+  <!-- parser -->
+  <rect x="36" y="236" width="168" height="62" rx="8" fill="#d0bfff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="120" y="256" text-anchor="middle" font-size="13" font-weight="bold" fill="#3b0764">parser</text>
+  <text x="120" y="272" text-anchor="middle" font-size="10" fill="#3b0764">JSONL → typed Records</text>
+  <text x="120" y="287" text-anchor="middle" font-size="10" fill="#6d28d9">resume-safe byte offset</text>
+
+  <!-- indexer -->
+  <rect x="36" y="316" width="168" height="62" rx="8" fill="#d0bfff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="120" y="336" text-anchor="middle" font-size="13" font-weight="bold" fill="#3b0764">indexer</text>
+  <text x="120" y="352" text-anchor="middle" font-size="10" fill="#3b0764">Incremental + full rebuild</text>
+  <text x="120" y="367" text-anchor="middle" font-size="10" fill="#6d28d9">O(new bytes) per tick</text>
+
+  <!-- watcher -->
+  <rect x="36" y="396" width="168" height="56" rx="8" fill="#ffd8a8" stroke="#f59e0b" stroke-width="2"/>
+  <text x="120" y="415" text-anchor="middle" font-size="13" font-weight="bold" fill="#78350f">watcher (fsnotify)</text>
+  <text x="120" y="432" text-anchor="middle" font-size="10" fill="#78350f">Debounced 800ms</text>
+  <text x="120" y="446" text-anchor="middle" font-size="10" fill="#b45309">auto-watches new subdirs</text>
+
+  <!-- arrow: jsonl → parser -->
+  <line x1="120" y1="166" x2="120" y2="234" stroke="#4a9eed" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- arrow: parser → indexer -->
+  <line x1="120" y1="298" x2="120" y2="314" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrowPurple)"/>
+
+  <!-- arrow: watcher → indexer (up) -->
+  <line x1="120" y1="396" x2="120" y2="378" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- ZONE: Storage Layer -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="260" y="210" width="200" height="260" rx="10" fill="#d3f9d8" fill-opacity="0.55" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="360" y="228" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803d">Storage Layer</text>
+
+  <!-- SQLite -->
+  <rect x="276" y="236" width="168" height="68" rx="8" fill="#b2f2bb" stroke="#22c55e" stroke-width="2"/>
+  <text x="360" y="258" text-anchor="middle" font-size="13" font-weight="bold" fill="#14532d">SQLite (WAL mode)</text>
+  <text x="360" y="274" text-anchor="middle" font-size="10" fill="#14532d">modernc.org/sqlite (CGo-free)</text>
+  <text x="360" y="289" text-anchor="middle" font-size="10" fill="#15803d">MaxOpenConns=8  busy_timeout=30s</text>
+
+  <!-- FTS5 -->
+  <rect x="276" y="316" width="168" height="48" rx="8" fill="#c3fae8" stroke="#22c55e" stroke-width="2"/>
+  <text x="360" y="336" text-anchor="middle" font-size="12" font-weight="bold" fill="#14532d">messages_fts (FTS5)</text>
+  <text x="360" y="352" text-anchor="middle" font-size="10" fill="#15803d">full-text search</text>
+
+  <!-- file_state -->
+  <rect x="276" y="374" width="168" height="48" rx="8" fill="#c3fae8" stroke="#22c55e" stroke-width="2"/>
+  <text x="360" y="394" text-anchor="middle" font-size="12" font-weight="bold" fill="#14532d">file_state</text>
+  <text x="360" y="410" text-anchor="middle" font-size="10" fill="#15803d">resume byte offsets</text>
+
+  <!-- arrow: indexer → SQLite -->
+  <line x1="204" y1="347" x2="274" y2="270" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- ZONE: Analytics Layer -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="500" y="210" width="210" height="260" rx="10" fill="#fff3bf" fill-opacity="0.7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="605" y="228" text-anchor="middle" font-size="12" font-weight="bold" fill="#b45309">Analytics Layer</text>
+
+  <!-- analytics -->
+  <rect x="516" y="236" width="178" height="68" rx="8" fill="#fff3bf" stroke="#f59e0b" stroke-width="2"/>
+  <text x="605" y="258" text-anchor="middle" font-size="13" font-weight="bold" fill="#78350f">analytics</text>
+  <text x="605" y="274" text-anchor="middle" font-size="10" fill="#78350f">cost.go — net cache savings</text>
+  <text x="605" y="289" text-anchor="middle" font-size="10" fill="#b45309">5m / 1h TTL split pricing</text>
+
+  <!-- alerts -->
+  <rect x="516" y="316" width="178" height="48" rx="8" fill="#ffc9c9" stroke="#ef4444" stroke-width="2"/>
+  <text x="605" y="336" text-anchor="middle" font-size="12" font-weight="bold" fill="#7f1d1d">alerts</text>
+  <text x="605" y="352" text-anchor="middle" font-size="10" fill="#b91c1c">Daily budget threshold</text>
+
+  <!-- EventBus -->
+  <rect x="516" y="374" width="178" height="48" rx="8" fill="#ffd8a8" stroke="#f59e0b" stroke-width="2"/>
+  <text x="605" y="394" text-anchor="middle" font-size="12" font-weight="bold" fill="#78350f">EventBus</text>
+  <text x="605" y="410" text-anchor="middle" font-size="10" fill="#b45309">SSE fan-out · buffered ch(16)</text>
+
+  <!-- arrow: SQLite → analytics -->
+  <line x1="444" y1="270" x2="514" y2="270" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- dashed arrow: watcher → EventBus -->
+  <line x1="204" y1="430" x2="514" y2="398" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arrowAmber)"/>
+  <text x="355" y="420" text-anchor="middle" font-size="10" fill="#b45309">"updated" event</text>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- ZONE: Serve Layer -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="752" y="72" width="388" height="398" rx="10" fill="#dbe4ff" fill-opacity="0.45" stroke="#4a9eed" stroke-width="1.5"/>
+  <text x="946" y="90" text-anchor="middle" font-size="12" font-weight="bold" fill="#2563eb">Serve Layer</text>
+
+  <!-- server -->
+  <rect x="768" y="100" width="356" height="68" rx="8" fill="#a5d8ff" stroke="#4a9eed" stroke-width="2"/>
+  <text x="946" y="122" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e3a5f">server (chi router)</text>
+  <text x="946" y="140" text-anchor="middle" font-size="11" fill="#1e3a5f">REST API + SSE  ·  :3456  ·  15s timeout (streaming excluded)</text>
+  <text x="946" y="156" text-anchor="middle" font-size="10" fill="#2563eb">/api/v1/health  /events  /export  /sessions  /tools</text>
+
+  <!-- SPA -->
+  <rect x="768" y="186" width="356" height="62" rx="8" fill="#a5d8ff" stroke="#4a9eed" stroke-width="2"/>
+  <text x="946" y="208" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e3a5f">Embedded SPA (web/)</text>
+  <text x="946" y="226" text-anchor="middle" font-size="11" fill="#1e3a5f">embed.FS  ·  index.html + static/  ·  Chart.js (vendored)</text>
+  <text x="946" y="241" text-anchor="middle" font-size="10" fill="#2563eb">No build step required</text>
+
+  <!-- config -->
+  <rect x="768" y="266" width="356" height="62" rx="8" fill="#d0bfff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="946" y="288" text-anchor="middle" font-size="14" font-weight="bold" fill="#3b0764">config (Viper)</text>
+  <text x="946" y="306" text-anchor="middle" font-size="11" fill="#3b0764">flag → env (CTL_*) → ./config.yaml → ~/.config/… → defaults</text>
+  <text x="946" y="321" text-anchor="middle" font-size="10" fill="#6d28d9">PricingFor(model) — longest-prefix match + Fallback</text>
+
+  <!-- CLI -->
+  <rect x="768" y="346" width="356" height="62" rx="8" fill="#eebefa" stroke="#ec4899" stroke-width="2"/>
+  <text x="946" y="368" text-anchor="middle" font-size="14" font-weight="bold" fill="#701a75">CLI (cobra)</text>
+  <text x="946" y="386" text-anchor="middle" font-size="11" fill="#701a75">stats  ·  sessions {list,show,search}  ·  tools show  ·  export</text>
+  <text x="946" y="401" text-anchor="middle" font-size="10" fill="#a21caf">index [--rebuild]  ·  serve [--skip-index]</text>
+
+  <!-- arrow: analytics → server -->
+  <line x1="710" y1="265" x2="766" y2="155" stroke="#4a9eed" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- dashed arrow: analytics → CLI -->
+  <line x1="710" y1="290" x2="766" y2="370" stroke="#ec4899" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arrowPink)"/>
+
+  <!-- dashed arrow: EventBus → server (SSE push) -->
+  <line x1="694" y1="388" x2="766" y2="175" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arrowAmber)"/>
+  <text x="726" y="290" text-anchor="middle" font-size="10" fill="#b45309" transform="rotate(-70,726,290)">SSE push</text>
+
+  <!-- osascript notify arrow -->
+  <line x1="694" y1="340" x2="766" y2="378" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrowRed)"/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- Browser box -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="840" y="496" width="212" height="56" rx="8" fill="#b2f2bb" stroke="#22c55e" stroke-width="2"/>
+  <text x="946" y="518" text-anchor="middle" font-size="14" font-weight="bold" fill="#14532d">Browser</text>
+  <text x="946" y="537" text-anchor="middle" font-size="11" fill="#14532d">http://127.0.0.1:3456</text>
+
+  <!-- arrow: SPA → Browser -->
+  <line x1="946" y1="248" x2="946" y2="494" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- osascript notify label -->
+  <rect x="1050" y="330" width="90" height="38" rx="6" fill="#ffc9c9" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="1095" y="347" text-anchor="middle" font-size="10" fill="#7f1d1d">osascript</text>
+  <text x="1095" y="361" text-anchor="middle" font-size="10" fill="#7f1d1d">notify</text>
+  <line x1="694" y1="338" x2="1048" y2="345" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrowRed)"/>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- Legend -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <rect x="20" y="504" width="710" height="110" rx="10" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.5"/>
+  <text x="36" y="524" font-size="13" font-weight="bold" fill="#1e1e1e">Key Invariants</text>
+  <circle cx="44" cy="541" r="4" fill="#2563eb"/>
+  <text x="56" y="546" font-size="11" fill="#2563eb">Binds 127.0.0.1 only — personal use, no auth, no network exposure</text>
+  <circle cx="44" cy="561" r="4" fill="#15803d"/>
+  <text x="56" y="566" font-size="11" fill="#15803d">CGo-free (modernc.org/sqlite) — cross-compiles on Linux, macOS, Windows</text>
+  <circle cx="44" cy="581" r="4" fill="#6d28d9"/>
+  <text x="56" y="586" font-size="11" fill="#6d28d9">Resume-safe parser — partial trailing JSONL line never advances byte offset</text>
+  <circle cx="44" cy="601" r="4" fill="#b45309"/>
+  <text x="56" y="606" font-size="11" fill="#b45309">Single writer discipline — writeMu serializes writes; batches ≤500 rows/tx</text>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- Arrow markers -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <defs>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4a9eed"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#8b5cf6"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowPink" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ec4899"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444"/>
+    </marker>
+  </defs>
+</svg>

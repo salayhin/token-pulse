@@ -104,7 +104,7 @@ func (e *Engine) fillProjectStat(ctx context.Context, p *ProjectStat) (*ProjectS
 		p.OutputTokens += out
 		p.CacheCreate += cLegacy
 		p.CacheRead += cr
-		pricing := e.cfg.PricingFor(model)
+		pricing := e.Cfg().PricingFor(model)
 		p.CostUSD += CostUSD(pricing, in, out, c5m, c1h, cLegacy, cr)
 	}
 	if err := rows.Err(); err != nil {
@@ -122,4 +122,3 @@ func (e *Engine) fillProjectStat(ctx context.Context, p *ProjectStat) (*ProjectS
 	}
 	return p, nil
 }
-

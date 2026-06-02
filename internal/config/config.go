@@ -20,8 +20,9 @@ type Config struct {
 }
 
 type AlertsConfig struct {
-	DailyBudgetUSD float64 `mapstructure:"daily_budget"` // 0 disables
-	Notify         bool    `mapstructure:"notify"`       // macOS osascript
+	DailyBudgetUSD float64            `mapstructure:"daily_budget"` // 0 disables
+	ModelBudgets   map[string]float64 `mapstructure:"model_budgets" yaml:"model_budgets" json:"model_budgets"` // per-model daily budgets
+	Notify         bool               `mapstructure:"notify"` // macOS osascript
 }
 
 type ServerConfig struct {
@@ -34,21 +35,23 @@ type StorageConfig struct {
 }
 
 type PricingPresets struct {
-	Preset   string                  `mapstructure:"preset"`
-	Models   map[string]ModelPricing `mapstructure:"models"`
-	Fallback ModelPricing            `mapstructure:"fallback"`
+	Preset   string                  `mapstructure:"preset"   yaml:"preset"   json:"preset"`
+	Models   map[string]ModelPricing `mapstructure:"models"   yaml:"models"   json:"models"`
+	Fallback ModelPricing            `mapstructure:"fallback" yaml:"fallback" json:"fallback"`
 }
 
+// ModelPricing tags must stay in sync across mapstructure (viper), yaml (writer),
+// and json (settings HTTP handler). Drift causes silent round-trip data loss.
 type ModelPricing struct {
-	Input float64 `mapstructure:"input"`
+	Input float64 `mapstructure:"input"          yaml:"input"          json:"input"`
 	// CacheCreate is the rate (USD per 1M tokens) for the 5-minute ephemeral
 	// cache write. CacheCreate1h is the rate for the 1-hour ephemeral cache
 	// write — typically 1.6× higher per Anthropic's pricing. If unset, the 1h
 	// rate falls back to CacheCreate (preserves backward-compatible cost).
-	CacheCreate   float64 `mapstructure:"cache_create"`
-	CacheCreate1h float64 `mapstructure:"cache_create_1h"`
-	CacheRead     float64 `mapstructure:"cache_read"`
-	Output        float64 `mapstructure:"output"`
+	CacheCreate   float64 `mapstructure:"cache_create"   yaml:"cache_create"   json:"cache_create"`
+	CacheCreate1h float64 `mapstructure:"cache_create_1h" yaml:"cache_create_1h" json:"cache_create_1h"`
+	CacheRead     float64 `mapstructure:"cache_read"     yaml:"cache_read"     json:"cache_read"`
+	Output        float64 `mapstructure:"output"         yaml:"output"         json:"output"`
 }
 
 // CacheCreate1hRate returns the 1h cache rate, falling back to CacheCreate
@@ -84,10 +87,16 @@ func (c *Config) PricingFor(model string) ModelPricing {
 }
 
 func Load(cfgFile string) (*Config, error) {
+	c, _, err := LoadWithPath(cfgFile)
+	return c, err
+}
+
+// LoadWithPath loads config and also returns the resolved config file path.
+func LoadWithPath(cfgFile string) (*Config, string, error) {
 	v := viper.New()
 	setDefaults(v)
 
-	v.SetEnvPrefix("CTL")
+	v.SetEnvPrefix("TP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -98,23 +107,31 @@ func Load(cfgFile string) (*Config, error) {
 		v.SetConfigType("yaml")
 		v.AddConfigPath(".")
 		if home, err := os.UserHomeDir(); err == nil {
-			v.AddConfigPath(filepath.Join(home, ".config", "claude-token-lens"))
+			v.AddConfigPath(filepath.Join(home, ".config", "tokenpulse"))
 		}
 	}
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, notFound := err.(viper.ConfigFileNotFoundError); !notFound {
-			return nil, fmt.Errorf("read config: %w", err)
+			return nil, "", fmt.Errorf("read config: %w", err)
 		}
 	}
 
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, "", fmt.Errorf("unmarshal config: %w", err)
 	}
 	c.ClaudeDir = expandHome(c.ClaudeDir)
 	c.Storage.Path = expandHome(c.Storage.Path)
-	return &c, nil
+	return &c, v.ConfigFileUsed(), nil
+}
+
+// DefaultConfigPath returns the canonical write target when no config file exists.
+func DefaultConfigPath() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "tokenpulse", "config.yaml")
+	}
+	return "config.yaml"
 }
 
 func setDefaults(v *viper.Viper) {
@@ -123,7 +140,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("timezone", "UTC")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 3456)
-	v.SetDefault("storage.path", filepath.Join(home, ".config", "claude-token-lens", "data.db"))
+	v.SetDefault("storage.path", filepath.Join(home, ".config", "tokenpulse", "data.db"))
 	v.SetDefault("alerts.daily_budget", 0.0)
 	v.SetDefault("alerts.notify", false)
 

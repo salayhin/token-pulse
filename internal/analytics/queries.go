@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/sirajus-salayhin/claude-token-lens/internal/config"
+	"github.com/sirajus-salayhin/tokenpulse/internal/config"
 )
 
 type Engine struct {
@@ -16,6 +16,9 @@ type Engine struct {
 func New(db *sql.DB, cfg *config.Config) *Engine {
 	return &Engine{db: db, cfg: cfg}
 }
+
+// Cfg returns the current config. Used by sessions, projects, prompts, trends.
+func (e *Engine) Cfg() *config.Config { return e.cfg }
 
 type Totals struct {
 	Sessions           int     `json:"sessions"`
@@ -165,8 +168,7 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 		       COALESCE(SUM(cache_create_tokens),0),
 		       COALESCE(SUM(cache_create_5m_tokens),0),
 		       COALESCE(SUM(cache_create_1h_tokens),0),
-		       COALESCE(SUM(cache_read_tokens),0),
-		       COALESCE(GROUP_CONCAT(DISTINCT model), '')
+		       COALESCE(SUM(cache_read_tokens),0)
 		FROM messages WHERE role='assistant'
 		GROUP BY d ORDER BY d DESC LIMIT ?`, tzMod, days)
 	if err != nil {
@@ -177,22 +179,66 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 	var out []DailyRow
 	for rows.Next() {
 		var r DailyRow
-		var modelsCSV string
 		if err := rows.Scan(&r.Date, &r.Sessions, &r.Messages, &r.InputTokens, &r.OutputTokens,
 			&r.CacheCreateTokens, &r.CacheCreate5mTokens, &r.CacheCreate1hTokens,
-			&r.CacheReadTokens, &modelsCSV); err != nil {
+			&r.CacheReadTokens); err != nil {
 			return nil, err
 		}
-		// Approximate per-day cost using the dominant-model pricing (good enough for daily roll-up).
-		// For exact per-model split, we issue a second query — keeping this lightweight for now.
-		p := e.cfg.PricingFor(firstModel(modelsCSV))
-		r.CostUSD = CostUSD(p, r.InputTokens, r.OutputTokens,
-			r.CacheCreate5mTokens, r.CacheCreate1hTokens, r.CacheCreateTokens, r.CacheReadTokens)
-		r.NetCacheSavingsUSD = NetCacheSavingsUSD(p,
-			r.CacheCreate5mTokens, r.CacheCreate1hTokens, r.CacheCreateTokens, r.CacheReadTokens)
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Second pass: compute accurate per-day cost using per-model pricing.
+	// GROUP_CONCAT(DISTINCT model) returns models in arbitrary order so using
+	// the first model's rates for all tokens can be wildly wrong (e.g. haiku
+	// rates applied to an opus-heavy day). Instead we issue one extra query
+	// that groups by (day, model) — same pattern as costAndSavings.
+	costRows, err := e.db.QueryContext(ctx, `
+		SELECT strftime('%Y-%m-%d', ts, ?) AS d, model,
+		       COALESCE(SUM(input_tokens),0),
+		       COALESCE(SUM(output_tokens),0),
+		       COALESCE(SUM(cache_create_5m_tokens),0),
+		       COALESCE(SUM(cache_create_1h_tokens),0),
+		       COALESCE(SUM(cache_create_tokens),0),
+		       COALESCE(SUM(cache_read_tokens),0)
+		FROM messages WHERE role='assistant'
+		GROUP BY d, model
+		ORDER BY d DESC`, tzMod)
+	if err != nil {
+		return nil, err
+	}
+	defer costRows.Close()
+
+	type dayCost struct{ cost, savings float64 }
+	dayMap := make(map[string]*dayCost, len(out))
+	for costRows.Next() {
+		var d, model string
+		var in, out2, c5m, c1h, cLeg, cr int
+		if err := costRows.Scan(&d, &model, &in, &out2, &c5m, &c1h, &cLeg, &cr); err != nil {
+			return nil, err
+		}
+		p := e.cfg.PricingFor(model)
+		dc := dayMap[d]
+		if dc == nil {
+			dc = &dayCost{}
+			dayMap[d] = dc
+		}
+		dc.cost += CostUSD(p, in, out2, c5m, c1h, cLeg, cr)
+		dc.savings += NetCacheSavingsUSD(p, c5m, c1h, cLeg, cr)
+	}
+	if err := costRows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range out {
+		if dc := dayMap[out[i].Date]; dc != nil {
+			out[i].CostUSD = dc.cost
+			out[i].NetCacheSavingsUSD = dc.savings
+		}
+	}
+	return out, nil
 }
 
 type CacheStats struct {

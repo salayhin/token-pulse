@@ -91,7 +91,39 @@ type ModelStat struct {
 	AvgCostPerMsgUSD  float64 `json:"avg_cost_per_msg_usd"`
 }
 
+// ObservedModels returns the distinct non-empty model ids that appear on
+// assistant messages, ordered by message count desc. Used by the settings
+// page so users can edit pricing for the exact models they're using, not
+// just abstract prefixes.
+//
+// Synthetic markers (anything wrapped in angle brackets like "<synthetic>")
+// are excluded: Claude Code emits these on client-generated stub turns and
+// they carry no tokens / no cost — surfacing them as "models" is misleading.
+func (e *Engine) ObservedModels(ctx context.Context) ([]string, error) {
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT model FROM messages
+		WHERE role='assistant' AND model != '' AND model NOT LIKE '<%'
+		GROUP BY model
+		ORDER BY COUNT(*) DESC, model ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (e *Engine) Models(ctx context.Context) ([]ModelStat, error) {
+	// Synthetic markers (<synthetic> etc.) are excluded — see ObservedModels.
+	// The leading '<' check keeps real model ids (which never start with '<')
+	// while dropping every Claude Code sentinel in one rule.
 	rows, err := e.db.QueryContext(ctx, `
 		SELECT COALESCE(model,'<unknown>'),
 		       COUNT(DISTINCT session_id),
@@ -103,7 +135,7 @@ func (e *Engine) Models(ctx context.Context) ([]ModelStat, error) {
 		       COALESCE(SUM(cache_create_1h_tokens),0),
 		       COALESCE(SUM(cache_read_tokens),0)
 		FROM messages
-		WHERE role='assistant'
+		WHERE role='assistant' AND COALESCE(model,'') NOT LIKE '<%'
 		GROUP BY model
 		ORDER BY COUNT(*) DESC`)
 	if err != nil {
@@ -118,7 +150,7 @@ func (e *Engine) Models(ctx context.Context) ([]ModelStat, error) {
 			&m.InputTokens, &m.OutputTokens, &m.CacheCreate, &c5m, &c1h, &m.CacheRead); err != nil {
 			return nil, err
 		}
-		p := e.cfg.PricingFor(m.Model)
+		p := e.Cfg().PricingFor(m.Model)
 		m.CostUSD = CostUSD(p, m.InputTokens, m.OutputTokens, c5m, c1h, m.CacheCreate, m.CacheRead)
 		if m.AssistantMessages > 0 {
 			m.AvgCostPerMsgUSD = m.CostUSD / float64(m.AssistantMessages)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -20,12 +21,37 @@ type SessionSummary struct {
 	ToolCalls    int     `json:"tool_calls"`
 	CostUSD      float64 `json:"cost_usd"`
 	FirstPrompt  string  `json:"first_prompt,omitempty"`
+	// DominantModel is the model with the most assistant messages in this
+	// session. Ties broken alphabetically. Empty for sessions with zero
+	// assistant messages.
+	DominantModel string `json:"dominant_model,omitempty"`
 	// Identity fields. DisplayTitle is server-resolved precedence:
 	// custom_title > agent_name > ai_title > "" (empty → caller falls back to ID).
 	AITitle      string `json:"ai_title,omitempty"`
 	CustomTitle  string `json:"custom_title,omitempty"`
 	AgentName    string `json:"agent_name,omitempty"`
 	DisplayTitle string `json:"display_title,omitempty"`
+}
+
+type SessionModelStat struct {
+	Model              string  `json:"model"`
+	AssistantMessages  int     `json:"assistant_messages"`
+	InputTokens        int     `json:"input_tokens"`
+	OutputTokens       int     `json:"output_tokens"`
+	CacheCreateTokens  int     `json:"cache_create_tokens"`
+	CacheCreate5mTokens int    `json:"cache_create_5m_tokens"`
+	CacheCreate1hTokens int    `json:"cache_create_1h_tokens"`
+	CacheReadTokens    int     `json:"cache_read_tokens"`
+	CostUSD            float64 `json:"cost_usd"`
+	AvgCostPerMsgUSD   float64 `json:"avg_cost_per_msg_usd"`
+}
+
+type CostLineItem struct {
+	Model      string  `json:"model"`       // e.g., "claude-opus-4-7"
+	TokenType  string  `json:"token_type"`  // "input" | "output" | "cache_read" | "cache_create_5m" | "cache_create_1h"
+	TokenCount int     `json:"token_count"` // Number of tokens
+	Rate       float64 `json:"rate"`        // USD per 1M tokens
+	CostUSD    float64 `json:"cost_usd"`    // Calculated cost
 }
 
 func resolveDisplayTitle(custom, agent, ai string) string {
@@ -117,8 +143,26 @@ func (e *Engine) Sessions(ctx context.Context, project, cursor string, from, to 
 			resp.Sessions[i].CostUSD = cost
 		}
 		resp.Sessions[i].FirstPrompt = e.firstPrompt(ctx, resp.Sessions[i].ID)
+		resp.Sessions[i].DominantModel = e.dominantModel(ctx, resp.Sessions[i].ID)
 	}
 	return resp, nil
+}
+
+// dominantModel returns the model id used in the most assistant messages of
+// a session. SQLite picks deterministic ordering with the secondary key.
+// Synthetic sentinels (<synthetic>, <unknown>, ...) are excluded so a session
+// of real Sonnet turns plus a few client-injected stubs doesn't display
+// "<synthetic>" as its dominant model.
+func (e *Engine) dominantModel(ctx context.Context, sessionID string) string {
+	var model string
+	_ = e.db.QueryRowContext(ctx, `
+		SELECT model FROM messages
+		WHERE session_id=? AND role='assistant'
+		      AND model != '' AND model NOT LIKE '<%'
+		GROUP BY model
+		ORDER BY COUNT(*) DESC, model ASC
+		LIMIT 1`, sessionID).Scan(&model)
+	return model
 }
 
 func (e *Engine) sessionCost(ctx context.Context, sessionID string) (float64, error) {
@@ -144,9 +188,163 @@ func (e *Engine) sessionCost(ctx context.Context, sessionID string) (float64, er
 		if err := rows.Scan(&model, &in, &out, &c5m, &c1h, &cLegacy, &cr); err != nil {
 			return 0, err
 		}
-		total += CostUSD(e.cfg.PricingFor(model), in, out, c5m, c1h, cLegacy, cr)
+		total += CostUSD(e.Cfg().PricingFor(model), in, out, c5m, c1h, cLegacy, cr)
 	}
 	return total, rows.Err()
+}
+
+func (e *Engine) sessionModelCosts(ctx context.Context, sessionID string) ([]SessionModelStat, error) {
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT model,
+		       COALESCE(COUNT(DISTINCT uuid), 0),
+		       COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0),
+		       COALESCE(SUM(cache_create_tokens), 0),
+		       COALESCE(SUM(cache_create_5m_tokens), 0),
+		       COALESCE(SUM(cache_create_1h_tokens), 0),
+		       COALESCE(SUM(cache_read_tokens), 0)
+		FROM messages
+		WHERE session_id = ? AND role = 'assistant'
+		GROUP BY model`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SessionModelStat
+	for rows.Next() {
+		var s SessionModelStat
+		var msgCount int
+		if err := rows.Scan(&s.Model, &msgCount, &s.InputTokens, &s.OutputTokens,
+			&s.CacheCreateTokens, &s.CacheCreate5mTokens, &s.CacheCreate1hTokens,
+			&s.CacheReadTokens); err != nil {
+			return nil, err
+		}
+		s.AssistantMessages = msgCount
+
+		// Calculate cost per model using correct pricing
+		p := e.Cfg().PricingFor(s.Model)
+		s.CostUSD = CostUSD(p, s.InputTokens, s.OutputTokens,
+			s.CacheCreate5mTokens, s.CacheCreate1hTokens,
+			s.CacheCreateTokens, s.CacheReadTokens)
+
+		if msgCount > 0 {
+			s.AvgCostPerMsgUSD = s.CostUSD / float64(msgCount)
+		}
+
+		results = append(results, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sort by cost descending (highest cost first)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CostUSD > results[j].CostUSD
+	})
+
+	return results, nil
+}
+
+func (e *Engine) sessionCostLineItems(ctx context.Context, sessionID string) ([]CostLineItem, error) {
+	// Query: Group by model to get token totals per model
+	rows, err := e.db.QueryContext(ctx, `
+		SELECT model,
+		       COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0),
+		       COALESCE(SUM(cache_read_tokens), 0),
+		       COALESCE(SUM(cache_create_5m_tokens), 0),
+		       COALESCE(SUM(cache_create_1h_tokens), 0)
+		FROM messages
+		WHERE session_id = ? AND role = 'assistant'
+		GROUP BY model`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lineItems []CostLineItem
+	for rows.Next() {
+		var model string
+		var in, out, cr, c5m, c1h int
+		if err := rows.Scan(&model, &in, &out, &cr, &c5m, &c1h); err != nil {
+			return nil, err
+		}
+
+		p := e.Cfg().PricingFor(model)
+
+		// Add line item for each token type that has tokens > 0
+		if in > 0 {
+			lineItems = append(lineItems, CostLineItem{
+				Model:      model,
+				TokenType:  "input",
+				TokenCount: in,
+				Rate:       p.Input,
+				CostUSD:    float64(in) * p.Input / tokensPerMillion,
+			})
+		}
+		if out > 0 {
+			lineItems = append(lineItems, CostLineItem{
+				Model:      model,
+				TokenType:  "output",
+				TokenCount: out,
+				Rate:       p.Output,
+				CostUSD:    float64(out) * p.Output / tokensPerMillion,
+			})
+		}
+		if cr > 0 {
+			lineItems = append(lineItems, CostLineItem{
+				Model:      model,
+				TokenType:  "cache_read",
+				TokenCount: cr,
+				Rate:       p.CacheRead,
+				CostUSD:    float64(cr) * p.CacheRead / tokensPerMillion,
+			})
+		}
+		if c5m > 0 {
+			lineItems = append(lineItems, CostLineItem{
+				Model:      model,
+				TokenType:  "cache_create_5m",
+				TokenCount: c5m,
+				Rate:       p.CacheCreate,
+				CostUSD:    float64(c5m) * p.CacheCreate / tokensPerMillion,
+			})
+		}
+		if c1h > 0 {
+			lineItems = append(lineItems, CostLineItem{
+				Model:      model,
+				TokenType:  "cache_create_1h",
+				TokenCount: c1h,
+				Rate:       p.CacheCreate1hRate(),
+				CostUSD:    float64(c1h) * p.CacheCreate1hRate() / tokensPerMillion,
+			})
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sort: group by model (alphabetically), then by token type order, then by cost descending
+	tokenTypeOrder := map[string]int{
+		"input":           0,
+		"output":          1,
+		"cache_read":      2,
+		"cache_create_5m": 3,
+		"cache_create_1h": 4,
+	}
+	sort.Slice(lineItems, func(i, j int) bool {
+		if lineItems[i].Model != lineItems[j].Model {
+			return lineItems[i].Model < lineItems[j].Model
+		}
+		if tokenTypeOrder[lineItems[i].TokenType] != tokenTypeOrder[lineItems[j].TokenType] {
+			return tokenTypeOrder[lineItems[i].TokenType] < tokenTypeOrder[lineItems[j].TokenType]
+		}
+		return lineItems[i].CostUSD > lineItems[j].CostUSD
+	})
+
+	return lineItems, nil
 }
 
 func (e *Engine) firstPrompt(ctx context.Context, sessionID string) string {
@@ -181,9 +379,11 @@ type ToolCallSummary struct {
 }
 
 type SessionDetail struct {
-	Session  SessionSummary   `json:"session"`
-	Cache    *CacheStats      `json:"cache,omitempty"`
-	Messages []SessionMessage `json:"messages"`
+	Session       SessionSummary      `json:"session"`
+	Cache         *CacheStats         `json:"cache,omitempty"`
+	ModelCosts    []SessionModelStat  `json:"model_costs,omitempty"`
+	CostLineItems []CostLineItem      `json:"cost_line_items,omitempty"`
+	Messages      []SessionMessage    `json:"messages"`
 }
 
 func (e *Engine) Session(ctx context.Context, sessionID string) (*SessionDetail, error) {
@@ -234,7 +434,7 @@ func (e *Engine) Session(ctx context.Context, sessionID string) (*SessionDetail,
 		}
 		m.HasThinking = hasThinking != 0
 		if m.Role == "assistant" {
-			p := e.cfg.PricingFor(m.Model)
+			p := e.Cfg().PricingFor(m.Model)
 			m.CostUSD = CostUSD(p, m.InputTokens, m.OutputTokens, c5m, c1h, m.CacheCreate, m.CacheRead)
 		}
 		msgs = append(msgs, m)
@@ -267,7 +467,15 @@ func (e *Engine) Session(ctx context.Context, sessionID string) (*SessionDetail,
 	if err != nil {
 		return nil, err
 	}
-	return &SessionDetail{Session: s, Cache: cache, Messages: msgs}, nil
+	modelCosts, err := e.sessionModelCosts(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	costLineItems, err := e.sessionCostLineItems(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return &SessionDetail{Session: s, Cache: cache, ModelCosts: modelCosts, CostLineItems: costLineItems, Messages: msgs}, nil
 }
 
 func (e *Engine) sessionCache(ctx context.Context, sessionID string) (*CacheStats, error) {
@@ -304,7 +512,7 @@ func (e *Engine) sessionCache(ctx context.Context, sessionID string) (*CacheStat
 		if err := rows.Scan(&model, &c5m, &c1h, &cLegacy, &r); err != nil {
 			return nil, err
 		}
-		savings += NetCacheSavingsUSD(e.cfg.PricingFor(model), c5m, c1h, cLegacy, r)
+		savings += NetCacheSavingsUSD(e.Cfg().PricingFor(model), c5m, c1h, cLegacy, r)
 	}
 	return &CacheStats{
 		InputTokens:       in,

@@ -11,7 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/sirajus-salayhin/claude-token-lens/internal/indexer"
+	"github.com/sirajus-salayhin/tokenpulse/internal/indexer"
 )
 
 type Notifier interface {
@@ -85,7 +85,10 @@ func (w *Watcher) addExisting(fw *fsnotify.Watcher) error {
 	}
 	for _, e := range entries {
 		if e.IsDir() {
-			_ = fw.Add(filepath.Join(w.root, e.Name()))
+			path := filepath.Join(w.root, e.Name())
+			if err := fw.Add(path); err != nil {
+				w.log.Debug("failed to watch project dir", "path", path, "err", err)
+			}
 		}
 	}
 	return nil
@@ -95,7 +98,9 @@ func (w *Watcher) handle(fw *fsnotify.Watcher, ev fsnotify.Event) {
 	// New project directory: start watching it.
 	if ev.Op&fsnotify.Create != 0 {
 		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			_ = fw.Add(ev.Name)
+			if err := fw.Add(ev.Name); err != nil {
+				w.log.Debug("failed to watch new project dir", "path", ev.Name, "err", err)
+			}
 			return
 		}
 	}

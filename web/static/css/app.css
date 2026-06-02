@@ -45,6 +45,8 @@ body {
 }
 header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
 h1 { margin: 0; font-size: 22px; font-weight: 600; }
+h1 a { color: inherit; text-decoration: none; cursor: pointer; }
+h1 a:hover { color: var(--accent); }
 h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; }
 .muted { color: var(--muted-2); font-size: 12px; }
 
@@ -86,10 +88,20 @@ th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--bo
 th:first-child, td:first-child { text-align: left; }
 th:nth-child(2), td:nth-child(2),
 th:last-child, td:last-child { text-align: left; }
-/* Sessions table has a Title column at col-2 that pushed Project to col-3;
-   keep Project left-aligned and Branch left-aligned for readability. */
+/* Sessions table: Ended, Title, Project, Model, Msgs, Tools, Cost, First prompt
+   keep Project and Model left-aligned for readability. */
 #sessions-table th:nth-child(3), #sessions-table td:nth-child(3),
 #sessions-table th:nth-child(4), #sessions-table td:nth-child(4) { text-align: left; }
+#sessions-table td:nth-child(4) code {
+  font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted);
+}
+
+/* Models table on Overview: monospace model ids, left-aligned model column */
+#models-table th:first-child, #models-table td:first-child { text-align: left; }
+#models-table td code { font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* Per-session Models card: tighter metrics, monospaced model ids */
+.sd-models-list .metric { padding: 4px 0; }
 th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
 tbody tr:hover { background: var(--hover); cursor: pointer; }
 
@@ -145,6 +157,17 @@ body.focus-mode #view-sessions .sessions-filter { display: none !important; }
 #sd-thread .turn.user { border-left: 3px solid var(--accent); }
 #sd-thread .turn.assistant { border-left: 3px solid var(--accent-2); }
 #sd-thread .turn .tools { margin-top: 6px; color: var(--muted); font-size: 12px; }
+#sd-thread .turn .tokens {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  margin: 4px 0 6px; padding: 4px 0;
+  border-top: 1px dashed var(--border-soft);
+  border-bottom: 1px dashed var(--border-soft);
+  color: var(--muted); font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+#sd-thread .turn .tokens b {
+  color: var(--text); font-weight: 500; font-family: ui-monospace, monospace;
+}
 
 /* Focus mode: opened in a new tab via session row → chrome hidden, only the
    session detail renders. */
@@ -230,3 +253,46 @@ body.focus-mode #sd-charts { margin-top: 0; }
 .toggle-btn.hidden {
   display: none;
 }
+
+/* ---------- Settings ---------- */
+.settings-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+}
+.settings-row label {
+  min-width: 120px; color: var(--muted); font-size: 13px;
+}
+#settings-tz {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  font-family: inherit; color-scheme: light dark;
+  min-width: 220px;
+}
+#settings-pricing input.settings-rate,
+#settings-pricing input.settings-model-name {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 6px; font-size: 13px; width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+#settings-pricing input.settings-rate { text-align: right; max-width: 90px; }
+#settings-pricing input.settings-model-name { font-family: ui-monospace, monospace; max-width: 240px; }
+#settings-pricing td { padding: 6px 10px; }
+.settings-delete {
+  padding: 2px 8px; font-size: 14px; line-height: 1;
+  color: var(--muted); background: transparent; border-color: var(--border-soft);
+}
+.settings-delete:hover { color: var(--warn); border-color: var(--warn); }
+.settings-actions {
+  display: flex; align-items: center; gap: 12px; margin-top: 20px;
+}
+.settings-save {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.settings-save:hover { filter: brightness(1.08); background: var(--accent); }
+#settings-help { max-width: 720px; line-height: 1.5; }
+#settings-help em { color: var(--text); font-style: normal; font-family: ui-monospace, monospace; }
+.settings-row-tag {
+  display: inline-block; width: 14px; color: var(--accent-2);
+  font-size: 12px; vertical-align: middle; margin-right: 4px;
+  cursor: help;
+}
+.settings-row-tag.muted { color: var(--muted-2); }

@@ -12,28 +12,31 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/sirajus-salayhin/claude-token-lens/internal/analytics"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/config"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/server/handlers"
-	"github.com/sirajus-salayhin/claude-token-lens/web"
+	"github.com/sirajus-salayhin/tokenpulse/internal/analytics"
+	"github.com/sirajus-salayhin/tokenpulse/internal/config"
+	"github.com/sirajus-salayhin/tokenpulse/internal/server/handlers"
+	"github.com/sirajus-salayhin/tokenpulse/web"
 )
 
 type Server struct {
-	cfg *config.Config
-	log *slog.Logger
-	eng *analytics.Engine
-	bus *handlers.EventBus
-	srv *http.Server
+	cfg      *config.Config
+	provider *config.Provider
+	log      *slog.Logger
+	eng      *analytics.Engine
+	bus      *handlers.EventBus
+	srv      *http.Server
 }
 
-func New(cfg *config.Config, eng *analytics.Engine, bus *handlers.EventBus, health handlers.HealthInfo, log *slog.Logger) *Server {
-	s := &Server{cfg: cfg, log: log, eng: eng, bus: bus}
+func New(provider *config.Provider, configPath string, eng *analytics.Engine, bus *handlers.EventBus, health handlers.HealthInfo, log *slog.Logger) *Server {
+	cfg := provider.Get()
+	s := &Server{cfg: cfg, provider: provider, log: log, eng: eng, bus: bus}
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(requestLog(log))
 	r.Use(middleware.Recoverer)
 
 	h := handlers.New(eng, bus, health)
+	sh := handlers.NewSettingsHandler(provider, configPath, eng)
 	r.Route("/api/v1", func(r chi.Router) {
 		// Bounded routes: a 15s per-request timeout cancels r.Context() if
 		// the SQLite layer is contended, so handlers fail fast with an
@@ -54,6 +57,8 @@ func New(cfg *config.Config, eng *analytics.Engine, bus *handlers.EventBus, heal
 			r.Get("/prompts", h.PromptStats)
 			r.Get("/models", h.Models)
 			r.Get("/health", h.Health)
+			r.Get("/settings", sh.Get)
+			r.Put("/settings", sh.Put)
 		})
 		// Streaming routes must outlive the per-request timeout: SSE keeps
 		// connections open indefinitely; export streams large CSV/JSON.
@@ -133,7 +138,7 @@ func copyAll(dst http.ResponseWriter, src fs.File) (int64, error) {
 
 func noCacheHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		h.ServeHTTP(w, r)
 	})
 }

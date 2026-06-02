@@ -65,7 +65,7 @@ type Projection struct {
 //	basis = trailing 7-day average daily cost
 //	projected_month_usd = month_to_date + basis × (days_in_month − days_elapsed)
 func (e *Engine) Projection(ctx context.Context) (*Projection, error) {
-	loc := e.cfg.Location()
+	loc := e.Cfg().Location()
 	now := time.Now().In(loc)
 	year, month, day := now.Date()
 	startOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, loc).UTC()

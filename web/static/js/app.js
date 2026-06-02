@@ -5,6 +5,43 @@ const fmtInt = n => (n || 0).toLocaleString();
 const fmtPct = n => ((n || 0) * 100).toFixed(1) + '%';
 const shortTs = s => (s || '').slice(0, 16);
 
+// Convert UTC ISO timestamp to user's timezone (extracted HH:MM:SS)
+function tsInTz(isoStr, tzName) {
+  if (!isoStr) return '';
+  try {
+    const date = new Date(isoStr);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzName || 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const h = parts.find(p => p.type === 'hour')?.value || '00';
+    const m = parts.find(p => p.type === 'minute')?.value || '00';
+    const s = parts.find(p => p.type === 'second')?.value || '00';
+    return `${h}:${m}:${s}`;
+  } catch {
+    return (isoStr || '').slice(11, 19);
+  }
+}
+
+// fmtMtoks: render as Millions. 2 dp for ≥1M, 4 dp for <1M so small counts
+// (e.g. 5,000 → 0.0050M) stay legible instead of rounding to 0.00M.
+function fmtMtoks(n) {
+  const v = (n || 0) / 1_000_000;
+  return v.toFixed(v >= 1 ? 2 : 4) + 'M';
+}
+
+// fmtTokens: compact per-message — raw int below 1k, k for thousands, M for millions.
+function fmtTokens(n) {
+  const v = n || 0;
+  if (v < 1000) return String(v);
+  if (v < 1_000_000) return (v / 1000).toFixed(v < 10_000 ? 1 : 0) + 'k';
+  return (v / 1_000_000).toFixed(2) + 'M';
+}
+
 // Use whenever interpolating user-controlled text into an innerHTML template.
 function escapeHtml(s) {
   return String(s ?? '')
@@ -106,10 +143,10 @@ async function loadSessionSkills(sessionId) {
 // ---------- Theme ----------
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('ctl-theme', t);
+  localStorage.setItem('tp-theme', t);
 }
 (function initTheme() {
-  const saved = localStorage.getItem('ctl-theme');
+  const saved = localStorage.getItem('tp-theme');
   if (saved) applyTheme(saved);
   else if (matchMedia && matchMedia('(prefers-color-scheme: light)').matches) applyTheme('light');
   else applyTheme('dark');
@@ -139,12 +176,20 @@ function activateTab(name, opts = {}) {
   for (const v of document.querySelectorAll('.view')) {
     v.classList.toggle('hidden', v.id !== 'view-' + name);
   }
+  if (name === 'overview') loadOverview();
   if (name === 'projects') loadProjects();
   if (name === 'sessions' && !opts.suppressLoad) loadSessions(true);
+  if (name === 'settings') loadSettings();
   if (!opts.suppressHash) setHash(name);
 }
 document.querySelectorAll('.tab').forEach(b =>
   b.addEventListener('click', () => activateTab(b.dataset.tab)));
+
+// Logo click to go home
+document.getElementById('logo')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  activateTab('overview');
+});
 
 // ---------- Overview ----------
 function fillTotals(prefix, t) {
@@ -155,9 +200,8 @@ function fillTotals(prefix, t) {
 }
 function fillCache(c) {
   document.getElementById('cache-rate').textContent = fmtPct(c.hit_rate);
-  document.getElementById('cache-reads').textContent = fmtInt(c.cache_read_tokens);
-  document.getElementById('cache-creates').textContent = fmtInt(c.cache_create_tokens);
-  document.getElementById('cache-savings').textContent = fmtUSD(c.net_savings_usd);
+  document.getElementById('cache-reads').textContent = fmtMtoks(c.cache_read_tokens);
+  document.getElementById('cache-creates').textContent = fmtMtoks(c.cache_create_tokens);
 }
 function fillProjection(p) {
   document.getElementById('proj-mtd').textContent = fmtUSD(p.month_to_date_usd);
@@ -172,9 +216,9 @@ function fillDailyTable(rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${r.date}</td><td>${fmtInt(r.sessions)}</td><td>${fmtInt(r.messages)}</td>
-      <td>${fmtInt(r.input_tokens)}</td><td>${fmtInt(r.output_tokens)}</td>
-      <td>${fmtInt(r.cache_read_tokens)}</td><td>${fmtInt(r.cache_create_tokens)}</td>
-      <td>${fmtUSD(r.cost_usd)}</td><td>${fmtUSD(r.net_cache_savings_usd)}</td>`;
+      <td>${fmtMtoks(r.input_tokens)}</td><td>${fmtMtoks(r.output_tokens)}</td>
+      <td>${fmtMtoks(r.cache_read_tokens)}</td><td>${fmtMtoks(r.cache_create_tokens)}</td>
+      <td>${fmtUSD(r.cost_usd)}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -217,22 +261,83 @@ function toolsChartRender(tools) {
   });
 }
 
+function modelsTableRender(models) {
+  const tbody = document.querySelector('#models-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!models || !models.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">No assistant messages yet.</td></tr>`;
+    return;
+  }
+  for (const m of models) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="text-align:left"><code>${escapeHtml(m.model)}</code></td>
+      <td>${fmtInt(m.assistant_messages)}</td>
+      <td>${fmtMtoks(m.input_tokens)}</td>
+      <td>${fmtMtoks(m.output_tokens)}</td>
+      <td>${fmtUSD(m.cost_usd)}</td>
+      <td>${fmtUSD(m.avg_cost_per_msg_usd)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderCostBreakdown(lineItems) {
+  const tbody = document.querySelector('#sd-cost-breakdown-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!lineItems || !lineItems.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="muted">No costs.</td></tr>`;
+    return;
+  }
+
+  let totalCost = 0;
+  for (const item of lineItems) {
+    const tr = document.createElement('tr');
+    const tokenTypeLabel = item.token_type.replace(/_/g, ' ');
+    const lineItemLabel = `${escapeHtml(item.model)} ${tokenTypeLabel}`;
+    tr.innerHTML = `
+      <td style="text-align:left">${lineItemLabel}</td>
+      <td>${fmtMtoks(item.token_count)}</td>
+      <td>$${item.rate.toFixed(2)}/1M</td>
+      <td>${fmtUSD(item.cost_usd)}`;
+    tbody.appendChild(tr);
+    totalCost += item.cost_usd;
+  }
+
+  // Add total row
+  const totalRow = document.createElement('tr');
+  totalRow.style.fontWeight = 'bold';
+  totalRow.style.borderTop = '1px solid var(--border)';
+  totalRow.innerHTML = `
+    <td style="text-align:left">Total</td>
+    <td>—</td>
+    <td>—</td>
+    <td>${fmtUSD(totalCost)}`;
+  tbody.appendChild(totalRow);
+}
+
+let currentTimezone = 'UTC'; // Store current user timezone
+
 async function loadOverview() {
-  const [stats, daily, cache, trends, proj] = await Promise.all([
+  const [stats, daily, cache, trends, proj, models] = await Promise.all([
     getJSON('/api/v1/stats'),
     getJSON('/api/v1/stats/daily?days=30'),
     getJSON('/api/v1/cache'),
     getJSON('/api/v1/stats/trends?days=30'),
     getJSON('/api/v1/stats/projections'),
+    getJSON('/api/v1/models'),
   ]);
-  document.getElementById('tz').textContent = stats.timezone || 'UTC';
+  currentTimezone = stats.timezone || 'UTC';
+  document.getElementById('tz').textContent = currentTimezone;
   fillTotals('today', stats.today);
   fillTotals('all', stats.all_time);
   fillCache(cache);
   fillProjection(proj);
   fillDailyTable(daily.daily || []);
   trendsChartRender(trends.trends || []);
-  toolsChartRender([]);
+  modelsTableRender(models.models || []);
   loadOverviewSkills();
 }
 
@@ -276,9 +381,13 @@ async function loadSessions(reset) {
     const titleCell = s.display_title
       ? `<span class="session-title">${escapeHtml(s.display_title)}</span>`
       : `<span class="session-id">${s.id.slice(0, 8)}</span>`;
+    const modelCell = s.dominant_model
+      ? `<code>${escapeHtml(s.dominant_model)}</code>`
+      : '<span class="muted">—</span>';
     tr.innerHTML = `
       <td>${shortTs(s.ended_at)}</td><td>${titleCell}</td>
-      <td>${s.project_slug}</td><td>${s.git_branch || ''}</td>
+      <td>${s.project_slug}</td>
+      <td>${modelCell}</td>
       <td>${fmtInt(s.message_count)}</td><td>${fmtInt(s.tool_calls)}</td>
       <td>${fmtUSD(s.cost_usd)}</td><td>${escapeHtml((s.first_prompt || '').slice(0, 80))}</td>`;
     tr.title = 'Open session';
@@ -347,10 +456,30 @@ async function showSession(id, opts = {}) {
   document.getElementById('sd-duration').textContent = humanDuration(d.session.started_at, d.session.ended_at);
   if (d.cache) {
     document.getElementById('sd-cache-rate').textContent = fmtPct(d.cache.hit_rate);
-    document.getElementById('sd-cache-reads').textContent = fmtInt(d.cache.cache_read_tokens);
-    document.getElementById('sd-cache-creates').textContent = fmtInt(d.cache.cache_create_tokens);
-    document.getElementById('sd-cache-savings').textContent = fmtUSD(d.cache.net_savings_usd);
+    document.getElementById('sd-cache-reads').textContent = fmtMtoks(d.cache.cache_read_tokens);
+    document.getElementById('sd-cache-creates').textContent = fmtMtoks(d.cache.cache_create_tokens);
   }
+
+  // Models card: count assistant turns per real model (skip <synthetic> stubs).
+  const modelCounts = {};
+  for (const m of d.messages || []) {
+    if (m.role !== 'assistant' || !m.model || m.model.startsWith('<')) continue;
+    modelCounts[m.model] = (modelCounts[m.model] || 0) + 1;
+  }
+  const sortedModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]);
+  const sdModels = document.getElementById('sd-models');
+  if (sdModels) {
+    sdModels.innerHTML = sortedModels.length
+      ? sortedModels.map(([model, count]) => `
+          <div class="metric">
+            <span class="label" style="font-family:ui-monospace,monospace">${escapeHtml(model)}</span>
+            <span>${fmtInt(count)} msg${count === 1 ? '' : 's'}</span>
+          </div>`).join('')
+      : '<span class="muted">—</span>';
+  }
+
+  // Render detailed cost line-item breakdown
+  renderCostBreakdown(d.cost_line_items || []);
 
   // Timeline chart: assistant turns over time, cost on Y.
   const turns = (d.messages || []).filter(m => m.role === 'assistant');
@@ -358,7 +487,7 @@ async function showSession(id, opts = {}) {
   sdTimelineChart = new Chart(document.getElementById('sd-timeline-chart'), {
     type: 'bar',
     data: {
-      labels: turns.map(t => (t.ts || '').slice(11, 19)),
+      labels: turns.map(t => tsInTz(t.ts, currentTimezone)),
       datasets: [{ label: 'Cost', data: turns.map(t => t.cost_usd || 0), backgroundColor: '#7c9cff' }],
     },
     options: {
@@ -400,15 +529,26 @@ async function showSession(id, opts = {}) {
     const cost = m.cost_usd ? `<span class="cost">${fmtUSD(m.cost_usd)}</span>` : '';
     const meta = m.role === 'assistant' ? `${m.role} · ${m.model || ''} · ${shortTs(m.ts)}` : `${m.role} · ${shortTs(m.ts)}`;
     const tools = (m.tool_calls || []).map(t => t.name).join(', ');
+    let tokenLine = '';
+    if (m.role === 'assistant') {
+      const tok = { in: m.input_tokens || 0, out: m.output_tokens || 0, cc: m.cache_create_tokens || 0, cr: m.cache_read_tokens || 0 };
+      if (tok.in || tok.out || tok.cc || tok.cr) {
+        tokenLine = `<div class="tokens">
+          <span title="Input tokens">in <b>${fmtTokens(tok.in)}</b></span>
+          <span title="Output tokens">out <b>${fmtTokens(tok.out)}</b></span>
+          <span title="Cache create tokens">cache cr <b>${fmtTokens(tok.cc)}</b></span>
+          <span title="Cache read tokens">cache rd <b>${fmtTokens(tok.cr)}</b></span>
+        </div>`;
+      }
+    }
     div.innerHTML = `
       <div class="role">${meta}${cost}</div>
+      ${tokenLine}
       <div class="body"></div>
       ${tools ? `<div class="tools">↳ ${tools}</div>` : ''}`;
     div.querySelector('.body').textContent = m.text || m.preview || '';
     thread.appendChild(div);
   }
-
-  loadSessionSkills(id);
 }
 document.getElementById('session-back').addEventListener('click', () => loadSessions(true));
 
@@ -472,7 +612,7 @@ async function dispatchHash() {
     await runSearch(decodeURIComponent(arg), { suppressHash: true });
     return;
   }
-  if (['overview', 'projects', 'sessions', 'tools', 'search'].includes(head)) {
+  if (['overview', 'projects', 'sessions', 'settings', 'tools', 'search'].includes(head)) {
     activateTab(head, { suppressHash: true });
     return;
   }
@@ -514,3 +654,163 @@ const focusMode = new URLSearchParams(window.location.search).has('focus');
       'Failed to load: ' + e.message + '</div>');
   }
 })();
+
+// ---------- Settings ----------
+const FIRST_RUN_MODELS = [
+  'claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4',
+  'claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5',
+];
+
+let settingsData = null;
+
+async function loadSettings() {
+  try {
+    const data = await getJSON('/api/v1/settings');
+    settingsData = data;
+    renderSettings(data);
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+  }
+}
+
+function renderSettings(data) {
+  // Config path
+  const pathEl = document.getElementById('settings-path');
+  if (pathEl) pathEl.textContent = data.config_path ? `(${data.config_path})` : '';
+
+  // Timezone selector
+  const tzSel = document.getElementById('settings-tz');
+  const tzCur = document.getElementById('settings-tz-current');
+  if (tzSel) {
+    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [];
+    const current = data.timezone || 'UTC';
+    tzSel.innerHTML = zones.map(z =>
+      `<option value="${z}"${z === current ? ' selected' : ''}>${z}</option>`
+    ).join('');
+    if (tzCur) tzCur.textContent = `Current: ${current}`;
+  }
+
+  // Pricing table
+  renderPricingTable(data);
+
+  // Populate datalist for model autocomplete
+  const dl = document.getElementById('observed-models-list');
+  if (dl) {
+    const observed = data.observed_models && data.observed_models.length
+      ? data.observed_models : FIRST_RUN_MODELS;
+    dl.innerHTML = observed.map(m => `<option value="${escapeHtml(m)}">`).join('');
+  }
+}
+
+function renderPricingTable(data) {
+  const tbody = document.querySelector('#settings-pricing tbody');
+  if (!tbody) return;
+  const pricing = data.pricing || {};
+  const models = pricing.models || {};
+  const observed = data.observed_models && data.observed_models.length
+    ? data.observed_models : FIRST_RUN_MODELS;
+
+  tbody.innerHTML = observed.map(model => {
+    const rates = models[model] || resolveRatesForModel(model, models, pricing.fallback || {});
+    return pricingRow(model, rates, true);
+  }).join('');
+
+  // Wire delete buttons
+  tbody.querySelectorAll('.settings-delete').forEach(btn => {
+    btn.addEventListener('click', () => deleteModel(btn.dataset.model));
+  });
+}
+
+function pricingRow(model, rates, observed) {
+  const tag = observed
+    ? `<span class="settings-row-tag" title="observed in your usage data">●</span>`
+    : `<span class="settings-row-tag muted" title="not yet seen in usage data">○</span>`;
+  return `<tr>
+    <td style="text-align:left">${tag}<code>${escapeHtml(model)}</code></td>
+    <td>${(rates.input || 0).toFixed(3)}</td>
+    <td>${(rates.output || 0).toFixed(3)}</td>
+    <td>${(rates.cache_read || 0).toFixed(3)}</td>
+    <td>${(rates.cache_create || 0).toFixed(3)}</td>
+    <td>${(rates.cache_create_1h || 0).toFixed(3)}</td>
+    <td><button class="btn settings-delete" data-model="${escapeHtml(model)}" title="Edit">✎</button></td>
+  </tr>`;
+}
+
+function resolveRatesForModel(model, models, fallback) {
+  // Longest-prefix match
+  let best = '', bestRates = fallback;
+  for (const [k, v] of Object.entries(models)) {
+    if (model.startsWith(k) && k.length > best.length) { best = k; bestRates = v; }
+  }
+  return bestRates;
+}
+
+function deleteModel(model) {
+  // Open edit form pre-filled for this model
+  openEditForm(model);
+}
+
+function openEditForm(model) {
+  const form = document.getElementById('settings-edit-form');
+  if (!form) return;
+  form.classList.remove('hidden');
+
+  const pricing = (settingsData && settingsData.pricing) || {};
+  const models = pricing.models || {};
+  const rates = models[model] || resolveRatesForModel(model, models, pricing.fallback || {});
+
+  document.getElementById('edit-model-name').value = model || '';
+  document.getElementById('edit-input').value = (rates.input || 0).toFixed(3);
+  document.getElementById('edit-output').value = (rates.output || 0).toFixed(3);
+  document.getElementById('edit-cache-read').value = (rates.cache_read || 0).toFixed(3);
+  document.getElementById('edit-cache-create').value = (rates.cache_create || 0).toFixed(3);
+  document.getElementById('edit-cache-create-1h').value = (rates.cache_create_1h || 0).toFixed(3);
+  document.getElementById('edit-model-name').dataset.original = model || '';
+}
+
+document.getElementById('settings-add-btn').addEventListener('click', () => openEditForm(''));
+document.getElementById('edit-cancel-btn').addEventListener('click', () => {
+  document.getElementById('settings-edit-form').classList.add('hidden');
+});
+
+document.getElementById('edit-save-btn').addEventListener('click', async () => {
+  const model = document.getElementById('edit-model-name').value.trim();
+  if (!model) { alert('Model name is required'); return; }
+  const patch = collectSettings();
+  patch.pricing.models = patch.pricing.models || {};
+  patch.pricing.models[model] = {
+    input: parseFloat(document.getElementById('edit-input').value) || 0,
+    output: parseFloat(document.getElementById('edit-output').value) || 0,
+    cache_read: parseFloat(document.getElementById('edit-cache-read').value) || 0,
+    cache_create: parseFloat(document.getElementById('edit-cache-create').value) || 0,
+    cache_create_1h: parseFloat(document.getElementById('edit-cache-create-1h').value) || 0,
+  };
+  await saveSettings(patch, 'settings-status');
+  document.getElementById('settings-edit-form').classList.add('hidden');
+});
+
+document.getElementById('settings-tz').addEventListener('change', async () => {
+  await saveSettings(collectSettings(), 'settings-tz-status');
+});
+
+function collectSettings() {
+  const tz = document.getElementById('settings-tz').value;
+  const pricing = (settingsData && settingsData.pricing) ? JSON.parse(JSON.stringify(settingsData.pricing)) : {};
+  return { timezone: tz, pricing };
+}
+
+async function saveSettings(patch, statusId) {
+  const statusEl = document.getElementById(statusId);
+  try {
+    const resp = await fetch('/api/v1/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    if (statusEl) { statusEl.textContent = 'Saved ✓'; setTimeout(() => { statusEl.textContent = ''; }, 2000); }
+    await loadSettings();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+  }
+}

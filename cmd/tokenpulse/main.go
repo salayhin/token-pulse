@@ -13,14 +13,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sirajus-salayhin/claude-token-lens/internal/alerts"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/analytics"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/config"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/indexer"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/server"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/server/handlers"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/store"
-	"github.com/sirajus-salayhin/claude-token-lens/internal/watcher"
+	"github.com/sirajus-salayhin/tokenpulse/internal/alerts"
+	"github.com/sirajus-salayhin/tokenpulse/internal/analytics"
+	"github.com/sirajus-salayhin/tokenpulse/internal/config"
+	"github.com/sirajus-salayhin/tokenpulse/internal/indexer"
+	"github.com/sirajus-salayhin/tokenpulse/internal/server"
+	"github.com/sirajus-salayhin/tokenpulse/internal/server/handlers"
+	"github.com/sirajus-salayhin/tokenpulse/internal/store"
+	"github.com/sirajus-salayhin/tokenpulse/internal/watcher"
 )
 
 var (
@@ -30,10 +30,10 @@ var (
 
 func main() {
 	root := &cobra.Command{
-		Use:   "claude-token-lens",
+		Use:   "tokenpulse",
 		Short: "Local dashboard & CLI for Claude Code usage analytics",
 	}
-	root.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ./config.yaml or ~/.config/claude-token-lens/config.yaml)")
+	root.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ./config.yaml or ~/.config/tokenpulse/config.yaml)")
 	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "debug|info|warn|error")
 
 	root.AddCommand(serveCmd())
@@ -55,7 +55,7 @@ func newLogger() *slog.Logger {
 }
 
 func loadDeps() (*config.Config, *store.Store, *slog.Logger, error) {
-	cfg, err := config.Load(cfgFile)
+	cfg, _, err := config.LoadWithPath(cfgFile)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -68,13 +68,27 @@ func loadDeps() (*config.Config, *store.Store, *slog.Logger, error) {
 	return cfg, st, log, nil
 }
 
+func loadDepsWithPath() (*config.Config, string, *store.Store, *slog.Logger, error) {
+	cfg, cfgPath, err := config.LoadWithPath(cfgFile)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	log := newLogger()
+	st, err := store.Open(cfg.Storage.Path)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	st.WithLogger(log)
+	return cfg, cfgPath, st, log, nil
+}
+
 func serveCmd() *cobra.Command {
 	var skipIndex bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the local dashboard",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, st, log, err := loadDeps()
+			cfg, cfgPath, st, log, err := loadDepsWithPath()
 			if err != nil {
 				return err
 			}
@@ -100,6 +114,7 @@ func serveCmd() *cobra.Command {
 				}
 			}
 
+			provider := config.NewProvider(cfg)
 			eng := analytics.New(st.DB(), cfg)
 			bus := handlers.NewEventBus()
 			alertCheck := alerts.New(cfg, eng, log)
@@ -120,7 +135,7 @@ func serveCmd() *cobra.Command {
 				InFlight:   w.InFlight,
 				SlowWrites: st.SlowWrites,
 			}
-			s := server.New(cfg, eng, bus, health, log)
+			s := server.New(provider, cfgPath, eng, bus, health, log)
 			return s.Start(ctx)
 		},
 	}
@@ -186,7 +201,7 @@ func statsCmd() *cobra.Command {
 				t = s.Today
 				label = "Today"
 			}
-			fmt.Fprintf(tw, "claude-token-lens — %s (tz: %s)\n\n", label, s.Timezone)
+			fmt.Fprintf(tw, "tokenpulse — %s (tz: %s)\n\n", label, s.Timezone)
 			fmt.Fprintf(tw, "Sessions\t%d\n", t.Sessions)
 			fmt.Fprintf(tw, "Messages\t%d\n", t.Messages)
 			fmt.Fprintf(tw, "  assistant\t%d\n", t.AssistantMsgs)

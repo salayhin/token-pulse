@@ -93,7 +93,13 @@ func (e *Engine) parseSessionFileForSkills(path string, skillCounts, pluginCount
 	}
 	defer file.Close()
 
+	// JSONL lines can exceed bufio's default 64 KB limit (large context windows
+	// produce lines of 80–300 KB). Allocate a 4 MB buffer so no lines are
+	// silently dropped; scanner.Err() would surface ErrTooLong and abort the
+	// file early without the larger buffer.
+	const maxLine = 4 * 1024 * 1024
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, maxLine), maxLine)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {

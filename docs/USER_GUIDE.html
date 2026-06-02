@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Pulse - User Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+
+        header {
+            border-bottom: 3px solid #7c9cff;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            color: #7c9cff;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        nav {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 40px;
+        }
+
+        nav h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        nav ul {
+            list-style: none;
+        }
+
+        nav li {
+            margin: 8px 0;
+        }
+
+        nav a {
+            color: #7c9cff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+
+        .section {
+            margin-bottom: 60px;
+        }
+
+        h2 {
+            color: #1a1d22;
+            border-bottom: 2px solid #7c9cff;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        h3 {
+            color: #2c3e50;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .card {
+            background: #f9f9f9;
+            border-left: 4px solid #7c9cff;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .card.info {
+            border-left-color: #5fcfa6;
+            background: #f0fdf9;
+        }
+
+        .card.warning {
+            border-left-color: #ffd96a;
+            background: #fffaf0;
+        }
+
+        .screenshot-placeholder {
+            background: #e8e8e8;
+            border: 2px dashed #999;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 30px 0;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .metric-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border: 1px solid #ddd;
+        }
+
+        .metric-table th {
+            background: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+            color: #333;
+        }
+
+        .metric-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .metric-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .metric-name {
+            font-weight: 500;
+            color: #333;
+            width: 25%;
+        }
+
+        .metric-desc {
+            color: #666;
+        }
+
+        .metric-example {
+            font-family: monospace;
+            color: #7c9cff;
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: #d63384;
+        }
+
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .tip {
+            background: #e8f4f8;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #1e40af;
+        }
+
+        .formula {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+
+        footer {
+            border-top: 1px solid #ddd;
+            margin-top: 60px;
+            padding-top: 20px;
+            color: #999;
+            font-size: 0.9em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔌 Token Pulse</h1>
+            <p class="subtitle">Comprehensive Guide to Understanding Your Claude API Costs & Token Usage</p>
+        </header>
+
+        <nav>
+            <h2>Table of Contents</h2>
+            <ul>
+                <li><a href="#overview">Overview Page</a></li>
+                <li><a href="#projects">Projects Page</a></li>
+                <li><a href="#sessions">Sessions Page</a></li>
+                <li><a href="#session-details">Session Details Page</a></li>
+                <li><a href="#settings">Settings Page</a></li>
+                <li><a href="#concepts">Key Concepts</a></li>
+            </ul>
+        </nav>
+
+        <!-- OVERVIEW PAGE -->
+        <section class="section" id="overview">
+            <h2>📊 Overview Page</h2>
+            <p>The Overview page is your dashboard that displays a high-level summary of your Claude API usage and costs across all time and specific periods.</p>
+
+            <h3>Top Section: Summary Cards</h3>
+            <p>Four cards display key metrics at a glance:</p>
+
+            <div class="screenshot-placeholder">
+                [Screenshot of Overview Summary Cards]
+            </div>
+
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Card</th>
+                        <th>Metrics</th>
+                        <th>What It Means</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Today</td>
+                        <td>
+                            • Cost<br>
+                            • Sessions<br>
+                            • Messages<br>
+                            • Tool calls
+                        </td>
+                        <td class="metric-desc">Metrics for today only. Resets at midnight in your configured timezone. Helps track daily spending.</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">All time</td>
+                        <td>
+                            • Cost<br>
+                            • Sessions<br>
+                            • Messages<br>
+                            • Tool calls
+                        </td>
+                        <td class="metric-desc">Cumulative metrics since the first indexed session. Shows your total API usage.</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache</td>
+                        <td>
+                            • Hit rate<br>
+                            • Reads<br>
+                            • Creates
+                        </td>
+                        <td class="metric-desc">Prompt caching statistics. Hit rate shows percentage of times cached content was reused. High hit rates = savings!</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Projection</td>
+                        <td>
+                            • Month-to-date<br>
+                            • 7d daily avg<br>
+                            • Projected month<br>
+                            • Days remaining
+                        </td>
+                        <td class="metric-desc">Forecasts your monthly spending based on recent usage patterns.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip">
+                <strong>💡 Tip:</strong> Use the Projection card to understand if you're on pace with your budget. If "Projected month" exceeds your limit, consider optimizing your prompts or caching strategy.
+            </div>
+
+            <h3>Charts Section</h3>
+
+            <h4>Daily Cost Chart (Last 30 Days)</h4>
+            <p>A bar chart showing daily costs with a 7-day moving average line overlay.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Daily Cost Chart]
+            </div>
+            <div class="card info">
+                <strong>What to look for:</strong>
+                <ul>
+                    <li><strong>Spikes:</strong> Days with higher bars indicate expensive sessions (maybe longer conversations or tool use)</li>
+                    <li><strong>Trend line (7d MA):</strong> Shows the smoothed trend to see if costs are rising or falling overall</li>
+                    <li><strong>Consistency:</strong> Regular patterns help you predict future costs</li>
+                </ul>
+            </div>
+
+            <h4>Skills Table</h4>
+            <p>Lists the Claude Code skills and custom tasks you used, ranked by frequency.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Skills Table]
+            </div>
+            <div class="card info">
+                <strong>What each column means:</strong>
+                <ul>
+                    <li><strong>Skill name:</strong> The name of the skill/task</li>
+                    <li><strong>Count:</strong> How many times it was invoked in the selected period</li>
+                    <li><strong>Tokens:</strong> Total tokens used by this skill across all invocations</li>
+                </ul>
+            </div>
+
+            <h4>Models Table</h4>
+            <p>Breakdown of API costs by Claude model used.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Models Table]
+            </div>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Model</td>
+                        <td class="metric-desc">The Claude model name (e.g., <code>claude-opus-4-7</code>, <code>claude-sonnet-4-6</code>)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Msgs</td>
+                        <td class="metric-desc">Number of assistant turns using this model</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Input</td>
+                        <td class="metric-desc">Total input tokens for this model. Lower numbers are better for cost.</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Output</td>
+                        <td class="metric-desc">Total output tokens generated. Output costs more than input.</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost ($) for this model across all messages</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">$/msg</td>
+                        <td class="metric-desc">Average cost per message. Helps identify which model is most efficient for your use case.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>Plugins Table</h4>
+            <p>Shows which MCP (Model Context Protocol) servers and plugins were used, ranked by usage frequency.</p>
+            <div class="card info">
+                <strong>Use this to:</strong>
+                <ul>
+                    <li>See which integrations are most valuable to your workflow</li>
+                    <li>Identify unused plugins that could be removed</li>
+                </ul>
+            </div>
+
+            <h3>Daily Breakdown Table</h3>
+            <p>A detailed day-by-day breakdown of all metrics.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Daily Breakdown Table]
+            </div>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Date</td>
+                        <td class="metric-desc">The calendar date (in your configured timezone)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Sessions</td>
+                        <td class="metric-desc">How many Claude Code sessions ran that day</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Msgs</td>
+                        <td class="metric-desc">Total assistant messages (turns) on that day</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Input</td>
+                        <td class="metric-desc">Total input tokens processed that day</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Output</td>
+                        <td class="metric-desc">Total output tokens generated that day</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache rd</td>
+                        <td class="metric-desc">Tokens read from the prompt cache (cheaper than processing from scratch)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache cr</td>
+                        <td class="metric-desc">Tokens added to the cache for future reuse</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost for that day in USD</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- PROJECTS PAGE -->
+        <section class="section" id="projects">
+            <h2>📁 Projects Page</h2>
+            <p>The Projects page shows a breakdown of costs and usage grouped by your Claude Code projects.</p>
+
+            <div class="screenshot-placeholder">
+                [Screenshot of Projects Page]
+            </div>
+
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Project</td>
+                        <td class="metric-desc">The project slug/name (from your codebase directory)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Sessions</td>
+                        <td class="metric-desc">Total Claude Code sessions in this project</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Messages</td>
+                        <td class="metric-desc">Total assistant turns across all sessions in this project</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Tools</td>
+                        <td class="metric-desc">Total tool calls (file reads, edits, bash commands, etc.) used</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost for this project in USD</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Last active</td>
+                        <td class="metric-desc">When this project was last used (timestamp)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip">
+                <strong>💡 Tip:</strong> Click on any project row to filter the Sessions page to show only sessions from that project.
+            </div>
+        </section>
+
+        <!-- SESSIONS PAGE -->
+        <section class="section" id="sessions">
+            <h2>💬 Sessions Page</h2>
+            <p>The Sessions page shows a list of all your Claude Code sessions, with filtering and detail views.</p>
+
+            <h3>Filter Section</h3>
+            <div class="screenshot-placeholder">
+                [Screenshot of Sessions Filter]
+            </div>
+            <div class="card info">
+                <strong>Filtering options:</strong>
+                <ul>
+                    <li><strong>From / To dates:</strong> Filter sessions by date range (in your configured timezone)</li>
+                    <li><strong>Search:</strong> Click a session to view full details</li>
+                </ul>
+            </div>
+
+            <h3>Sessions Table</h3>
+            <div class="screenshot-placeholder">
+                [Screenshot of Sessions Table]
+            </div>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Ended</td>
+                        <td class="metric-desc">When the session finished (in your configured timezone)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Title</td>
+                        <td class="metric-desc">The display name of the session (first prompt, or custom title)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Project</td>
+                        <td class="metric-desc">Which project this session belongs to</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Model</td>
+                        <td class="metric-desc">Primary Claude model used in this session</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Msgs</td>
+                        <td class="metric-desc">Total messages (turns) in this session</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Tools</td>
+                        <td class="metric-desc">Total tool calls made (file operations, bash commands, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost for this session in USD</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">First prompt</td>
+                        <td class="metric-desc">Preview of the first message you sent (useful for searching)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip">
+                <strong>💡 Tip:</strong> Click any row to view detailed information about that session, including a breakdown of costs by token type and a timeline of how costs accumulated.
+            </div>
+        </section>
+
+        <!-- SESSION DETAILS PAGE -->
+        <section class="section" id="session-details">
+            <h2>🔍 Session Details Page</h2>
+            <p>When you click on a session, the detail view shows everything about that conversation, including a cost breakdown and performance metrics.</p>
+
+            <h3>Session Header</h3>
+            <div class="screenshot-placeholder">
+                [Screenshot of Session Header]
+            </div>
+            <div class="card info">
+                <strong>Shows:</strong>
+                <ul>
+                    <li>Session title and ID</li>
+                    <li>Project and branch name</li>
+                    <li>Total messages and cost</li>
+                    <li>Session start and end times (in your configured timezone)</li>
+                </ul>
+            </div>
+
+            <h3>Summary Cards</h3>
+
+            <h4>This Session Card</h4>
+            <div class="screenshot-placeholder">
+                [Screenshot of Session Summary Card]
+            </div>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost for this session in USD</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Messages</td>
+                        <td class="metric-desc">Total turns in the conversation (each assistant response = 1 message)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Tool calls</td>
+                        <td class="metric-desc">Total tool invocations (file reads, edits, bash, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Started</td>
+                        <td class="metric-desc">When the session began (in your configured timezone)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Ended</td>
+                        <td class="metric-desc">When the session ended (in your configured timezone)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Duration</td>
+                        <td class="metric-desc">How long the session lasted (wall-clock time)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>Cache (This Session) Card</h4>
+            <div class="card info">
+                <strong>Prompt caching metrics:</strong>
+                <ul>
+                    <li><strong>Hit rate:</strong> Percentage of times the cache was used vs. fresh processing</li>
+                    <li><strong>Reads:</strong> Tokens retrieved from the prompt cache (cheaper)</li>
+                    <li><strong>Creates:</strong> Tokens added to the cache for future reuse (small creation cost)</li>
+                </ul>
+            </div>
+
+            <h4>Models (This Session) Card</h4>
+            <p>Lists each Claude model used and how many messages used that model.</p>
+            <div class="card info">
+                <strong>Use this to:</strong>
+                <ul>
+                    <li>See if you used multiple models in one session</li>
+                    <li>Verify which model was primary</li>
+                </ul>
+            </div>
+
+            <h3>Cost Breakdown Table</h3>
+            <p><strong>NEW:</strong> This table shows a detailed line-item breakdown of exactly what contributed to the session cost.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Cost Breakdown Table]
+            </div>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Line item</td>
+                        <td class="metric-desc">Format: <code>Model + Token Type</code>. Example: "claude-opus-4-7 cache reads" or "claude-sonnet-4-6 output"</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Tokens</td>
+                        <td class="metric-desc">Number of tokens (formatted as M for millions, k for thousands). Example: "66.3M" = 66,300,000 tokens</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Rate</td>
+                        <td class="metric-desc">Cost per 1 million tokens ($X.XX/1M). Rates vary by model and token type.</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cost</td>
+                        <td class="metric-desc">Total cost for this line item: (Tokens × Rate / 1M)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card info">
+                <strong>Understanding token types:</strong>
+                <ul>
+                    <li><strong>input:</strong> Tokens you send to Claude (your messages + context)</li>
+                    <li><strong>output:</strong> Tokens Claude generates (responses, tool calls)</li>
+                    <li><strong>cache_read:</strong> Tokens reused from prompt cache (much cheaper!)</li>
+                    <li><strong>cache_create_5m:</strong> Tokens added to 5-minute cache</li>
+                    <li><strong>cache_create_1h:</strong> Tokens added to 1-hour cache</li>
+                </ul>
+            </div>
+
+            <div class="tip">
+                <strong>💡 Tip:</strong> High cache reads with low cache creates means you're efficiently reusing context. High cache creates with low reads means the cache hasn't been reused yet (might be a new pattern).
+            </div>
+
+            <h3>Charts</h3>
+
+            <h4>Cost per Response (Timeline Chart)</h4>
+            <p>A bar chart showing the cost of each assistant message, in chronological order.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Cost per Response Chart]
+            </div>
+            <div class="card info">
+                <strong>What to look for:</strong>
+                <ul>
+                    <li><strong>Spikes:</strong> A tall bar means that response cost more (longer output, cache creates, tool calls)</li>
+                    <li><strong>Pattern:</strong> Early messages might cost less; later ones more if using cache creates</li>
+                    <li><strong>X-axis (time in your timezone):</strong> Shows when each response happened</li>
+                    <li><strong>Y-axis (cost in $):</strong> Height of bar = cost of that response</li>
+                </ul>
+            </div>
+
+            <h4>Top Tools Chart</h4>
+            <p>A horizontal bar chart showing which tools (file reads, edits, bash commands, etc.) were used most.</p>
+            <div class="screenshot-placeholder">
+                [Screenshot of Top Tools Chart]
+            </div>
+            <div class="card info">
+                <strong>Use this to:</strong>
+                <ul>
+                    <li>Identify which operations were most frequent</li>
+                    <li>Spot if Claude is overusing certain tools</li>
+                </ul>
+            </div>
+
+            <h3>Thread (Conversation)</h3>
+            <p>The full conversation history in chronological order (newest messages first), showing:</p>
+            <ul>
+                <li><strong>User messages:</strong> What you asked Claude</li>
+                <li><strong>Assistant messages:</strong> Claude's responses, with model name and cost</li>
+                <li><strong>Tool results:</strong> Output from file operations, bash commands, etc.</li>
+            </ul>
+            <div class="card">
+                Each message shows:
+                <ul>
+                    <li><strong>Role:</strong> user, assistant, or tool-result</li>
+                    <li><strong>Model:</strong> Which Claude model (assistant messages only)</li>
+                    <li><strong>Time:</strong> When it happened (in your configured timezone)</li>
+                    <li><strong>Cost:</strong> $ spent on that message (assistant messages only)</li>
+                    <li><strong>Tokens:</strong> Breakdown of input/output/cache tokens</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- SETTINGS PAGE -->
+        <section class="section" id="settings">
+            <h2>⚙️ Settings Page</h2>
+            <p>Configure Token Pulse to match your preferences and Claude API pricing.</p>
+
+            <h3>Timezone Setting</h3>
+            <div class="screenshot-placeholder">
+                [Screenshot of Timezone Setting]
+            </div>
+            <div class="card info">
+                <strong>What it does:</strong>
+                <ul>
+                    <li>All dates and times throughout the app use this timezone</li>
+                    <li>Daily aggregations bucket by this timezone (important for "Today" metrics)</li>
+                    <li>Examples: "America/New_York", "Asia/Tokyo", "Europe/London"</li>
+                </ul>
+            </div>
+
+            <div class="tip">
+                <strong>💡 Tip:</strong> Set this to the timezone where you work. This ensures "Today" metrics and daily breakdowns align with your work day, not UTC.
+            </div>
+
+            <h3>Pricing Configuration</h3>
+            <div class="screenshot-placeholder">
+                [Screenshot of Pricing Table]
+            </div>
+            <p>A table of all models and their costs per 1 million tokens.</p>
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Model</td>
+                        <td class="metric-desc">Claude model name (e.g., "claude-opus-4-7")</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Input</td>
+                        <td class="metric-desc">Cost per 1M input tokens (e.g., $3.00/1M)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Output</td>
+                        <td class="metric-desc">Cost per 1M output tokens (usually more expensive than input)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache read</td>
+                        <td class="metric-desc">Cost per 1M tokens read from the prompt cache (usually 90% cheaper than input)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache cr 5m</td>
+                        <td class="metric-desc">Cost per 1M tokens added to 5-minute cache</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache cr 1h</td>
+                        <td class="metric-desc">Cost per 1M tokens added to 1-hour cache (usually cheaper than 5m)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card warning">
+                <strong>⚠️ Important:</strong> Pricing changes are applied retroactively to all past sessions. Token Pulse recalculates costs using the new rates the next time you load the dashboard. Keep rates accurate to see realistic numbers.
+            </div>
+
+            <h3>Adding / Editing Models</h3>
+            <p>Click "+ Add model" to add a new Claude model or edit an existing one.</p>
+            <div class="card info">
+                <strong>When to use this:</strong>
+                <ul>
+                    <li>Anthropic releases a new Claude version (e.g., "claude-opus-4-8")</li>
+                    <li>Pricing changes (check the <a href="https://www.anthropic.com/pricing" target="_blank">Anthropic pricing page</a>)</li>
+                    <li>You use a custom model variant with different pricing</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- KEY CONCEPTS -->
+        <section class="section" id="concepts">
+            <h2>📚 Key Concepts</h2>
+
+            <h3>Tokens & Token Types</h3>
+            <p>A token is roughly 4 characters of text. Claude splits all text into tokens for processing.</p>
+
+            <table class="metric-table">
+                <thead>
+                    <tr>
+                        <th>Token Type</th>
+                        <th>Description</th>
+                        <th>Cost Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Input</td>
+                        <td class="metric-desc">Your messages + system prompts + context. Sent TO Claude.</td>
+                        <td><code>$3.00/1M</code></td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Output</td>
+                        <td class="metric-desc">Claude's responses. Generated BY Claude.</td>
+                        <td><code>$15.00/1M</code> (usually 5x more expensive)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache Read</td>
+                        <td class="metric-desc">Tokens from the prompt cache that Claude reused (doesn't process them again).</td>
+                        <td><code>$0.30/1M</code> (90% cheaper!)</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Cache Create</td>
+                        <td class="metric-desc">Tokens added to the cache for future reuse. Small one-time cost.</td>
+                        <td><code>$3.75/1M</code> (25% input cost)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip">
+                <strong>💡 Example:</strong> You send a 1M token prompt.
+                <ul style="margin-top: 10px;">
+                    <li>First run: Cost = 1M × $3.00 input = $3.00</li>
+                    <li>Add to 1h cache: + 1M × $0.75 cache create = $3.75 total</li>
+                    <li>Second run (reusing cache): 0.1M new input + 0.9M cache read = 0.1M × $3.00 + 0.9M × $0.30 = $0.57 (saves $3.18!)</li>
+                </ul>
+            </div>
+
+            <h3>Cache Hit Rate</h3>
+            <p>Percentage of tokens retrieved from the prompt cache vs. processed fresh.</p>
+            <div class="formula">
+Cache Hit Rate = Cache Read Tokens / (Cache Read Tokens + Input Tokens) × 100%
+            </div>
+            <div class="card info">
+                <strong>Interpretation:</strong>
+                <ul>
+                    <li><strong>0%:</strong> No caching used. Each session processes everything from scratch.</li>
+                    <li><strong>50%:</strong> Half your tokens come from cache, half are fresh. Good reuse!</li>
+                    <li><strong>90%+:</strong> Excellent. You're reusing a lot of context (e.g., large codebases).</li>
+                </ul>
+            </div>
+
+            <h3>Net Cache Savings</h3>
+            <p>How much you save by using prompt caching vs. processing everything fresh.</p>
+            <div class="formula">
+Gross Saved = Cache Read × (Input Rate - Cache Read Rate)<br>
+Extra Paid = Cache Create × (Cache Create Rate - Input Rate)<br>
+Net Saved = Gross Saved - Extra Paid
+            </div>
+            <div class="card info">
+                <strong>Interpretation:</strong>
+                <ul>
+                    <li>Positive = Caching saved you money (good!)</li>
+                    <li>Negative = Caching cost more (you're not reusing enough)</li>
+                </ul>
+            </div>
+
+            <h3>Cost per Message vs. Cost per Token</h3>
+            <p><strong>Cost per message ($/msg):</strong> Total cost of a response ÷ number of responses.</p>
+            <p><strong>Cost per token:</strong> Calculated differently for input, output, and cache.</p>
+            <div class="card info">
+                <strong>Use $/msg to:</strong>
+                <ul>
+                    <li>Compare efficiency across different Claude models</li>
+                    <li>Benchmark: "On average, each Claude response costs $X"</li>
+                </ul>
+            </div>
+
+            <h3>Session vs. Message</h3>
+            <ul>
+                <li><strong>Session:</strong> An entire Claude Code conversation from start to finish. One session = many messages.</li>
+                <li><strong>Message:</strong> One turn in the conversation. You send a message → Claude responds → that's a message exchange.</li>
+            </ul>
+
+            <h3>Tool Calls</h3>
+            <p>When Claude uses tools (file reads, edits, bash commands, API calls, etc.), each invocation is a "tool call".</p>
+            <div class="card info">
+                <strong>Tool calls show up in metrics as:</strong>
+                <ul>
+                    <li><strong>Top tools chart:</strong> Which tools are used most</li>
+                    <li><strong>Cost breakdown:</strong> Not separately, but they affect token count (planning + execution)</li>
+                </ul>
+            </div>
+
+            <h3>Timezone and Daily Buckets</h3>
+            <p>All daily metrics ("Today", daily breakdown table) are bucketed based on your configured timezone, not UTC.</p>
+            <div class="card info">
+                <strong>Why this matters:</strong>
+                <ul>
+                    <li>If you work 9am-5pm in Tokyo (JST), set timezone to "Asia/Tokyo"</li>
+                    <li>"Today" metrics will show 9am Tokyo time as the start, not midnight UTC</li>
+                    <li>Makes budgeting and daily tracking align with your actual work day</li>
+                </ul>
+            </div>
+
+            <h3>Model Fallback and Pricing Hierarchy</h3>
+            <p>If a Claude model isn't in your pricing table, Token Pulse falls back to the longest matching prefix.</p>
+            <div class="formula">
+Model: "claude-opus-4-7-20250615" → No exact match?<br>
+→ Try "claude-opus-4-7" → No match?<br>
+→ Try "claude-opus-4" → Use this pricing
+            </div>
+            <div class="card info">
+                <strong>Use this to:</strong>
+                <ul>
+                    <li>Set pricing once per model family (e.g., just "claude-opus-4")</li>
+                    <li>New Claude versions automatically inherit the family pricing</li>
+                    <li>Override specific versions if needed (add "claude-opus-4-7-20250615")</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- TIPS & TRICKS -->
+        <section class="section">
+            <h2>🎯 Tips & Tricks for Optimizing Costs</h2>
+
+            <h3>1. Use Prompt Caching</h3>
+            <div class="card info">
+                <strong>When:</strong> You reuse the same large context (e.g., a codebase, documentation, system prompt).<br>
+                <strong>Benefit:</strong> 90% cost reduction on repeated context (cache read at $0.30/1M vs. input at $3.00/1M).<br>
+                <strong>How to measure:</strong> Check the "Cache" card on Overview. High hit rate = good!
+            </div>
+
+            <h3>2. Choose the Right Model</h3>
+            <div class="card info">
+                <strong>Check:</strong> Models table on Overview. Compare $/msg across models.<br>
+                <strong>Consideration:</strong> Cheaper models (Sonnet) might require longer prompts; expensive models (Opus) might solve faster. Measure end-to-end cost, not just $/msg.
+            </div>
+
+            <h3>3. Monitor Daily Budget with Projections</h3>
+            <div class="card info">
+                <strong>Check:</strong> Projection card on Overview.<br>
+                <strong>If "Projected month" > budget:</strong> Something changed. Investigate the daily chart for spikes.
+            </div>
+
+            <h3>4. Analyze Expensive Sessions</h3>
+            <div class="card info">
+                <strong>Check:</strong> Sessions page sorted by cost (descending).<br>
+                <strong>For each expensive session:</strong> Open it and review the "Cost per response" chart. Which responses cost the most? Why?
+            </div>
+
+            <h3>5. Watch Output Tokens**</h3>
+            <div class="card info">
+                <strong>Remember:</strong> Output tokens cost 5x more than input.<br>
+                <strong>Optimization:</strong> If Claude is verbose, ask for "brief" or "concise" responses. Check output tokens in cost breakdown.
+            </div>
+        </section>
+
+        <footer>
+            <p>Token Pulse v1.0 | Guide Last Updated: June 2026</p>
+            <p>For issues or questions, check the project repository documentation.</p>
+        </footer>
+    </div>
+</body>
+</html>
