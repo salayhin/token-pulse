@@ -68,6 +68,27 @@ h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: v
 .live-dot { color: var(--accent-2); font-size: 10px; }
 .live-dot.stale { color: var(--muted-2); }
 
+/* Subscription plan chip — shown in the header when plan != api so users
+   never forget that dollar values across the dashboard are API-equivalent
+   rather than what they actually pay. */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--accent);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: help;
+}
+.plan-badge::before {
+  content: "✦";
+  font-size: 11px;
+  color: var(--accent-2);
+}
+
 .view { animation: fade .15s ease-out; }
 .hidden { display: none !important; }
 @keyframes fade { from { opacity: 0 } to { opacity: 1 } }

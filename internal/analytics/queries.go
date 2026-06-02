@@ -8,17 +8,30 @@ import (
 	"github.com/sirajus-salayhin/tokenpulse/internal/config"
 )
 
+// Engine reads the live config through a *config.Provider so settings changes
+// (timezone, pricing, subscription, budget) take effect on the next request
+// without a restart. Direct e.cfg.X reads were removed because they captured
+// a snapshot at construction time and went stale after PUT /api/v1/settings.
 type Engine struct {
-	db  *sql.DB
-	cfg *config.Config
+	db       *sql.DB
+	provider *config.Provider
 }
 
-func New(db *sql.DB, cfg *config.Config) *Engine {
-	return &Engine{db: db, cfg: cfg}
+// New constructs an Engine bound to a live config provider.
+func New(db *sql.DB, provider *config.Provider) *Engine {
+	return &Engine{db: db, provider: provider}
 }
 
-// Cfg returns the current config. Used by sessions, projects, prompts, trends.
-func (e *Engine) Cfg() *config.Config { return e.cfg }
+// NewWithConfig is a convenience for CLI subcommands and tests that hold a
+// static *config.Config — it wraps the config in a one-shot provider so the
+// same Engine type handles both server (live) and CLI (frozen) use.
+func NewWithConfig(db *sql.DB, cfg *config.Config) *Engine {
+	return New(db, config.NewProvider(cfg))
+}
+
+// Cfg returns the *current* config snapshot. Cheap; safe under concurrent
+// reads. Callers must treat the returned *Config as immutable.
+func (e *Engine) Cfg() *config.Config { return e.provider.Get() }
 
 type Totals struct {
 	Sessions           int     `json:"sessions"`
@@ -42,7 +55,8 @@ type StatsResponse struct {
 }
 
 func (e *Engine) Stats(ctx context.Context) (*StatsResponse, error) {
-	loc := e.cfg.Location()
+	cfg := e.Cfg()
+	loc := cfg.Location()
 	now := time.Now().In(loc)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).UTC()
 
@@ -58,7 +72,7 @@ func (e *Engine) Stats(ctx context.Context) (*StatsResponse, error) {
 		Today:     today,
 		AllTime:   allTime,
 		Generated: time.Now().UTC(),
-		Timezone:  e.cfg.Timezone,
+		Timezone:  cfg.Timezone,
 	}, nil
 }
 
@@ -104,6 +118,7 @@ func (e *Engine) totals(ctx context.Context, from, to time.Time) (Totals, error)
 
 // costAndSavings groups by model so per-model pricing applies.
 func (e *Engine) costAndSavings(ctx context.Context, from, to time.Time) (float64, float64, error) {
+	cfg := e.Cfg()
 	where, args := buildTimeRange("ts", from, to)
 	q := `SELECT model,
 		COALESCE(SUM(input_tokens),0),
@@ -129,7 +144,7 @@ func (e *Engine) costAndSavings(ctx context.Context, from, to time.Time) (float6
 		if err := rows.Scan(&model, &in, &out, &c5m, &c1h, &cLegacy, &cr); err != nil {
 			return 0, 0, err
 		}
-		p := e.cfg.PricingFor(model)
+		p := cfg.PricingFor(model)
 		totalCost += CostUSD(p, in, out, c5m, c1h, cLegacy, cr)
 		totalSaved += NetCacheSavingsUSD(p, c5m, c1h, cLegacy, cr)
 	}
@@ -154,7 +169,8 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 	if days <= 0 {
 		days = 30
 	}
-	loc := e.cfg.Location()
+	cfg := e.Cfg()
+	loc := cfg.Location()
 	// SQLite's strftime is UTC by default; we shift ts into local tz, then truncate to date.
 	// Format the offset for SQLite's modifier syntax.
 	tzMod := tzModifier(loc)
@@ -219,7 +235,7 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 		if err := costRows.Scan(&d, &model, &in, &out2, &c5m, &c1h, &cLeg, &cr); err != nil {
 			return nil, err
 		}
-		p := e.cfg.PricingFor(model)
+		p := cfg.PricingFor(model)
 		dc := dayMap[d]
 		if dc == nil {
 			dc = &dayCost{}
@@ -256,14 +272,36 @@ type BudgetPeriod struct {
 }
 
 type BudgetResponse struct {
-	Day            BudgetPeriod `json:"day"`
-	Week           BudgetPeriod `json:"week"`
-	Month          BudgetPeriod `json:"month"`
-	MonthlyBudget  float64      `json:"monthly_budget_usd"`  // configured budget (== Month.BudgetUSD)
-	DaysInMonth    int          `json:"days_in_month"`       // calendar days in current month
-	DerivedDaily   float64      `json:"derived_daily_usd"`   // monthly / days_in_month
-	DerivedWeekly  float64      `json:"derived_weekly_usd"`  // derived_daily * 7
-	Timezone       string       `json:"timezone"`
+	Day           BudgetPeriod         `json:"day"`
+	Week          BudgetPeriod         `json:"week"`
+	Month         BudgetPeriod         `json:"month"`
+	MonthlyBudget float64              `json:"monthly_budget_usd"` // configured budget (== Month.BudgetUSD)
+	DaysInMonth   int                  `json:"days_in_month"`      // calendar days in current month
+	DerivedDaily  float64              `json:"derived_daily_usd"`  // monthly / days_in_month
+	DerivedWeekly float64              `json:"derived_weekly_usd"` // derived_daily * 7
+	Subscription  SubscriptionSummary  `json:"subscription"`
+	Timezone      string               `json:"timezone"`
+}
+
+// SubscriptionSummary lets the UI render the "subscription value" card
+// without re-computing month-to-date spend on the client.
+//
+// When IsSubscription is true:
+//
+//	NetBenefitUSD = APIValueMTDUSD - MonthlyFeeUSD   // positive means "getting your money's worth"
+//	Multiplier    = APIValueMTDUSD / MonthlyFeeUSD   // 1.0 = breakeven, 5.0 = 5× value
+//
+// When the plan is "api" (pay-as-you-go), the UI hides the card and uses
+// the field only to keep cost labels as "Cost" rather than "API value".
+type SubscriptionSummary struct {
+	Plan           string  `json:"plan"`            // "api" | "pro" | "max_5x" | "max_20x" | "team" | "custom"
+	PlanLabel      string  `json:"plan_label"`      // human-readable: "API", "Pro", "Max 5×", ...
+	IsSubscription bool    `json:"is_subscription"` // true ⇒ flat-fee plan; relabel cost figures
+	IsFeeFixed     bool    `json:"is_fee_fixed"`    // true ⇒ fee determined by plan (api/pro/max_*); UI hides the input
+	MonthlyFeeUSD  float64 `json:"monthly_fee_usd"`
+	APIValueMTDUSD float64 `json:"api_value_mtd_usd"`
+	NetBenefitUSD  float64 `json:"net_benefit_usd"` // api_value_mtd - monthly_fee
+	Multiplier     float64 `json:"multiplier"`      // api_value_mtd / monthly_fee (0 if fee==0)
 }
 
 // Budget returns today's, this-week's, and this-month's spend alongside
@@ -281,7 +319,8 @@ type BudgetResponse struct {
 // and long months: a $300/mo budget gives $10/day in June (30d) and ~$9.68/day
 // in July (31d).
 func (e *Engine) Budget(ctx context.Context) (*BudgetResponse, error) {
-	loc := e.cfg.Location()
+	cfg := e.Cfg()
+	loc := cfg.Location()
 	now := time.Now().In(loc)
 
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
@@ -296,7 +335,7 @@ func (e *Engine) Budget(ctx context.Context) (*BudgetResponse, error) {
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 	daysInMonth := int(endOfMonth.Sub(startOfMonth).Hours() / 24)
 
-	monthly := e.cfg.Alerts.MonthlyBudgetUSD
+	monthly := cfg.Alerts.MonthlyBudgetUSD
 	var derivedDaily, derivedWeekly float64
 	if monthly > 0 && daysInMonth > 0 {
 		derivedDaily = monthly / float64(daysInMonth)
@@ -331,6 +370,20 @@ func (e *Engine) Budget(ctx context.Context) (*BudgetResponse, error) {
 			End:         end,
 		}
 	}
+	_, feeFixed := config.CanonicalFee(cfg.Subscription.Plan)
+	sub := SubscriptionSummary{
+		Plan:           cfg.Subscription.Plan,
+		PlanLabel:      cfg.Subscription.PlanLabel(),
+		IsSubscription: cfg.Subscription.IsSubscription(),
+		IsFeeFixed:     feeFixed,
+		MonthlyFeeUSD:  cfg.Subscription.MonthlyFeeUSD,
+		APIValueMTDUSD: monthCost,
+	}
+	if sub.MonthlyFeeUSD > 0 {
+		sub.NetBenefitUSD = monthCost - sub.MonthlyFeeUSD
+		sub.Multiplier = monthCost / sub.MonthlyFeeUSD
+	}
+
 	return &BudgetResponse{
 		Day:           mk("day", dayCost, derivedDaily, startOfDay, endOfDay),
 		Week:          mk("week", weekCost, derivedWeekly, startOfWeek, endOfWeek),
@@ -339,7 +392,8 @@ func (e *Engine) Budget(ctx context.Context) (*BudgetResponse, error) {
 		DaysInMonth:   daysInMonth,
 		DerivedDaily:  derivedDaily,
 		DerivedWeekly: derivedWeekly,
-		Timezone:      e.cfg.Timezone,
+		Subscription:  sub,
+		Timezone:      cfg.Timezone,
 	}, nil
 }
 

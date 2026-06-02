@@ -23,10 +23,11 @@ import (
 // (disable the alert). The HTTP layer always sends the field so in practice
 // a nil pointer only appears in programmatic patches.
 type SettingsPatch struct {
-	Timezone         string             `yaml:"timezone"`
-	Pricing          PricingPresets     `yaml:"pricing"`
-	ModelBudgets     map[string]float64 `yaml:"model_budgets"`
-	MonthlyBudgetUSD *float64           `yaml:"monthly_budget,omitempty"`
+	Timezone         string              `yaml:"timezone"`
+	Pricing          PricingPresets      `yaml:"pricing"`
+	ModelBudgets     map[string]float64  `yaml:"model_budgets"`
+	MonthlyBudgetUSD *float64            `yaml:"monthly_budget,omitempty"`
+	Subscription     *SubscriptionConfig `yaml:"subscription,omitempty"`
 }
 
 // ValidateSettingsPatch is shared between the writer and the HTTP handler so
@@ -69,7 +70,27 @@ func ValidateSettingsPatch(p SettingsPatch) error {
 			return errors.New("monthly_budget must be ≥ 0")
 		}
 	}
+	if p.Subscription != nil {
+		if !validPlans[p.Subscription.Plan] {
+			return fmt.Errorf("subscription.plan must be one of api, pro, max_5x, max_20x, team, custom (got %q)", p.Subscription.Plan)
+		}
+		v := p.Subscription.MonthlyFeeUSD
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return errors.New("subscription.monthly_fee_usd must be a finite number")
+		}
+		if v < 0 {
+			return errors.New("subscription.monthly_fee_usd must be ≥ 0")
+		}
+	}
 	return nil
+}
+
+// validPlans guards SubscriptionConfig.Plan at the validation layer so
+// unknown values can't enter the YAML — keeps the read-side switch in
+// SubscriptionConfig.PlanLabel honest about the universe of inputs.
+var validPlans = map[string]bool{
+	"api": true, "pro": true, "max_5x": true, "max_20x": true,
+	"team": true, "custom": true,
 }
 
 func validatePricing(p ModelPricing, label string) error {
@@ -155,6 +176,14 @@ func WriteSettings(path string, patch SettingsPatch) error {
 		return err
 	}
 	setOrInsert(mapping, "pricing", priceNode)
+
+	if patch.Subscription != nil {
+		subNode, err := nodeFromValue(*patch.Subscription)
+		if err != nil {
+			return err
+		}
+		setOrInsert(mapping, "subscription", subNode)
+	}
 
 	// For alerts, merge budgets into the existing alerts subtree, preserving
 	// any keys we don't touch (notably notify).

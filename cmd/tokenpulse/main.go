@@ -115,9 +115,12 @@ func serveCmd() *cobra.Command {
 			}
 
 			provider := config.NewProvider(cfg)
-			eng := analytics.New(st.DB(), cfg)
+			// Engine + Checker read through the provider so settings PUTs take
+			// effect immediately (otherwise these would hold the boot snapshot
+			// and ignore live edits to pricing, budget, subscription, etc).
+			eng := analytics.New(st.DB(), provider)
 			bus := handlers.NewEventBus()
-			alertCheck := alerts.New(cfg, eng, log)
+			alertCheck := alerts.New(provider, eng, log)
 			alertCheck.Check(ctx)
 
 			// Background file watcher → debounced re-index → SSE 'updated' events
@@ -181,7 +184,7 @@ func statsCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
+			eng := analytics.NewWithConfig(st.DB(), cfg)
 			ctx := context.Background()
 			s, err := eng.Stats(ctx)
 			if err != nil {
@@ -238,7 +241,7 @@ func sessionsCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
+			eng := analytics.NewWithConfig(st.DB(), cfg)
 			resp, err := eng.Sessions(context.Background(), listProject, "", time.Time{}, time.Time{}, listLimit)
 			if err != nil {
 				return err
@@ -271,7 +274,7 @@ func sessionsCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
+			eng := analytics.NewWithConfig(st.DB(), cfg)
 			d, err := eng.Session(context.Background(), args[0])
 			if err != nil {
 				return err
@@ -320,7 +323,7 @@ func exportCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			eng := analytics.New(st.DB(), cfg)
+			eng := analytics.NewWithConfig(st.DB(), cfg)
 
 			var w *os.File
 			if outPath == "" || outPath == "-" {

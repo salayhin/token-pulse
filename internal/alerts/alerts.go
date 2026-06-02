@@ -16,10 +16,14 @@ import (
 // budget, or — as an early warning — when the daily pace is exceeded (today's
 // spend > monthly / days_in_month). Each trip fires once per crossing event;
 // the daily trip resets at midnight, the monthly trip resets on the 1st.
+//
+// The Checker reads the live config through a *config.Provider so settings
+// changes (e.g. raising or removing the monthly budget) take effect on the
+// next Check() call without a restart.
 type Checker struct {
-	cfg *config.Config
-	eng *analytics.Engine
-	log *slog.Logger
+	provider *config.Provider
+	eng      *analytics.Engine
+	log      *slog.Logger
 
 	mu             sync.Mutex
 	trippedDaily   bool
@@ -27,22 +31,32 @@ type Checker struct {
 	trippedByModel map[string]bool // tracks which models have exceeded their budgets
 }
 
-func New(cfg *config.Config, eng *analytics.Engine, log *slog.Logger) *Checker {
+func New(provider *config.Provider, eng *analytics.Engine, log *slog.Logger) *Checker {
 	return &Checker{
-		cfg:            cfg,
+		provider:       provider,
 		eng:            eng,
 		log:            log,
 		trippedByModel: make(map[string]bool),
 	}
 }
 
+// NewWithConfig wraps a static *Config in a one-shot provider so CLI
+// subcommands can still construct a Checker without plumbing a provider.
+func NewWithConfig(cfg *config.Config, eng *analytics.Engine, log *slog.Logger) *Checker {
+	return New(config.NewProvider(cfg), eng, log)
+}
+
+// cfg returns the current config snapshot. Cheap (atomic.Pointer load).
+func (c *Checker) cfg() *config.Config { return c.provider.Get() }
+
 // Check runs once and notifies (terminal log + macOS notification) if today's
 // derived-daily pace or month-to-date budget has been exceeded. Calling
 // repeatedly is safe; it deduplicates per-period. Per-model budget checking is
 // a future extension and currently a no-op.
 func (c *Checker) Check(ctx context.Context) {
-	hasMonthly := c.cfg.Alerts.MonthlyBudgetUSD > 0
-	hasModel := len(c.cfg.Alerts.ModelBudgets) > 0
+	cfg := c.cfg()
+	hasMonthly := cfg.Alerts.MonthlyBudgetUSD > 0
+	hasModel := len(cfg.Alerts.ModelBudgets) > 0
 	if !hasMonthly && !hasModel {
 		return
 	}
@@ -84,18 +98,19 @@ func (c *Checker) checkDailyPace(b *analytics.BudgetResponse) {
 		cost, b.DerivedDaily, b.MonthlyBudget)
 	c.log.Warn("daily pace exceeded", "cost_usd", cost, "daily_pace_usd", b.DerivedDaily)
 	fmt.Fprintln(stderr(), "⚠ "+msg)
-	if c.cfg.Alerts.Notify && runtime.GOOS == "darwin" {
+	if c.cfg().Alerts.Notify && runtime.GOOS == "darwin" {
 		_ = exec.Command("osascript", "-e",
 			fmt.Sprintf(`display notification %q with title "tokenpulse"`, msg)).Run()
 	}
 }
 
 func (c *Checker) checkMonthlyBudget(b *analytics.BudgetResponse) {
-	if c.cfg.Alerts.MonthlyBudgetUSD <= 0 {
+	cfg := c.cfg()
+	if cfg.Alerts.MonthlyBudgetUSD <= 0 {
 		return
 	}
 	cost := b.Month.CostUSD
-	if cost < c.cfg.Alerts.MonthlyBudgetUSD {
+	if cost < cfg.Alerts.MonthlyBudgetUSD {
 		c.mu.Lock()
 		c.trippedMonthly = false
 		c.mu.Unlock()
@@ -110,10 +125,10 @@ func (c *Checker) checkMonthlyBudget(b *analytics.BudgetResponse) {
 	}
 
 	msg := fmt.Sprintf("This month's Claude Code spend is $%.2f (budget $%.2f).",
-		cost, c.cfg.Alerts.MonthlyBudgetUSD)
-	c.log.Warn("monthly budget exceeded", "cost_usd", cost, "budget_usd", c.cfg.Alerts.MonthlyBudgetUSD)
+		cost, cfg.Alerts.MonthlyBudgetUSD)
+	c.log.Warn("monthly budget exceeded", "cost_usd", cost, "budget_usd", cfg.Alerts.MonthlyBudgetUSD)
 	fmt.Fprintln(stderr(), "⚠ "+msg)
-	if c.cfg.Alerts.Notify && runtime.GOOS == "darwin" {
+	if cfg.Alerts.Notify && runtime.GOOS == "darwin" {
 		_ = exec.Command("osascript", "-e",
 			fmt.Sprintf(`display notification %q with title "tokenpulse"`, msg)).Run()
 	}

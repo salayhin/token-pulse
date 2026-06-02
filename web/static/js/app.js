@@ -140,6 +140,54 @@ async function loadSessionSkills(sessionId) {
   }
 }
 
+// ---------- Subscription UI state ----------
+// applyPlanChrome is called from /api/v1/settings and /api/v1/budget responses.
+// It updates the header badge, flips "Cost"/"Spent" → "API value" labels,
+// and shows/hides the subscription-value card. Idempotent — safe to call
+// multiple times.
+function applyPlanChrome(plan, planLabel, monthlyFeeUSD) {
+  const isSubscription = plan && plan !== 'api';
+
+  // Header badge
+  const badge = document.getElementById('plan-badge');
+  if (badge) {
+    if (isSubscription) {
+      const feeStr = monthlyFeeUSD > 0 ? ` ($${monthlyFeeUSD.toFixed(2)}/mo)` : '';
+      badge.textContent = `Plan: ${planLabel || plan}${feeStr} · API-equivalent`;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+      badge.textContent = '';
+    }
+  }
+
+  // Flip cost-style labels everywhere they're tagged. Mappings are explicit
+  // so each label reads naturally instead of getting a clumsy " (API value)"
+  // suffix. New flippable labels go here, not at the call sites.
+  //
+  // The first time an element is touched, we cache its raw text on the
+  // dataset so the API-plan branch can restore it byte-for-byte. This makes
+  // applyPlanChrome safe to call repeatedly (e.g. after every settings save).
+  const COST_LABEL_MAP = {
+    'Cost':                       'API value',
+    'Spent':                      'API value (spent)',
+    '$/msg':                      '$/msg (API)',
+    'Cost per response':          'API value per response',
+    'Cost breakdown (this session)': 'API value breakdown (this session)',
+  };
+  document.querySelectorAll('[data-cost-label]').forEach(el => {
+    if (!el.dataset.costLabelOriginal) {
+      el.dataset.costLabelOriginal = el.textContent.trim();
+    }
+    const orig = el.dataset.costLabelOriginal;
+    if (!isSubscription) {
+      el.textContent = orig;
+      return;
+    }
+    el.textContent = COST_LABEL_MAP[orig] || (orig + ' (API value)');
+  });
+}
+
 // ---------- Theme ----------
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -351,6 +399,12 @@ async function loadBudget() {
     const data = await getJSON('/api/v1/budget');
     document.getElementById('budget-tz').textContent = data.timezone ? `(${data.timezone})` : '';
 
+    // Apply plan-aware chrome (badge + label flips) as early as possible so
+    // the user never sees stale labels on this view.
+    const sub = data.subscription || {};
+    applyPlanChrome(sub.plan, sub.plan_label, sub.monthly_fee_usd);
+    renderSubscriptionCard(sub);
+
     // Replace the generic derivation hint with the concrete numbers when set.
     const dHint = document.getElementById('budget-derivation');
     if (dHint) {
@@ -376,6 +430,31 @@ async function loadBudget() {
     }
   } catch (err) {
     console.error('Failed to load budget:', err);
+  }
+}
+
+function renderSubscriptionCard(sub) {
+  const card = document.getElementById('sub-value-card');
+  if (!card) return;
+  if (!sub || !sub.is_subscription) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('sub-plan', sub.plan_label || sub.plan);
+  set('sub-fee', sub.monthly_fee_usd > 0 ? fmtUSD(sub.monthly_fee_usd) + '/mo' : 'not set');
+  set('sub-api-value', fmtUSD(sub.api_value_mtd_usd));
+
+  if (sub.monthly_fee_usd > 0) {
+    const net = sub.net_benefit_usd;
+    const sign = net >= 0 ? '+' : '−';
+    set('sub-net', sign + fmtUSD(Math.abs(net)));
+    set('sub-mult', sub.multiplier.toFixed(2) + '×');
+  } else {
+    set('sub-net', '—');
+    set('sub-mult', '—');
   }
 }
 
@@ -702,8 +781,21 @@ window.addEventListener('hashchange', dispatchHash);
 // ---------- boot ----------
 const focusMode = new URLSearchParams(window.location.search).has('focus');
 
+// Boot-time chrome: hit /api/v1/budget once (it already returns subscription
+// info) so the header badge and "Cost"/"API value" labels are correct on the
+// very first paint, even on the Overview tab where /budget isn't otherwise
+// fetched. Non-blocking — overview still drives the initial loading state.
+async function applyInitialPlanChrome() {
+  try {
+    const b = await getJSON('/api/v1/budget');
+    const s = b.subscription || {};
+    applyPlanChrome(s.plan, s.plan_label, s.monthly_fee_usd);
+  } catch { /* harmless — settings/budget tabs will re-apply later */ }
+}
+
 (async function main() {
   try {
+    applyInitialPlanChrome();
     if (focusMode) {
       document.body.classList.add('focus-mode');
       const { head, arg } = parseHash();
@@ -768,6 +860,18 @@ function renderSettings(data) {
     ).join('');
     if (tzCur) tzCur.textContent = `Current: ${current}`;
   }
+
+  // Subscription
+  const planEl = document.getElementById('settings-plan');
+  const feeEl = document.getElementById('settings-plan-fee');
+  const sub = data.subscription || {};
+  const plan = sub.plan || 'api';
+  if (planEl) planEl.value = plan;
+  if (feeEl) feeEl.value = sub.monthly_fee_usd != null ? sub.monthly_fee_usd : 0;
+  applyPlanFormState(plan);
+  // Mirror plan-aware chrome so a settings change flips labels everywhere
+  // without waiting for the Budget tab to be visited.
+  applyPlanChrome(plan, planLabelFor(plan), sub.monthly_fee_usd || 0);
 
   // Budget (single monthly value; daily/weekly are derived on the Budget tab)
   const monthlyEl = document.getElementById('settings-monthly-budget');
@@ -888,6 +992,115 @@ document.getElementById('settings-tz').addEventListener('change', async () => {
   });
 })();
 
+// Subscription plan + fee: save on change. Picking a plan also pre-fills the
+// fee with a sensible default *only if the user hasn't typed one* — so we
+// never clobber a real Team-seat or Custom value with $20.
+(() => {
+  const planEl = document.getElementById('settings-plan');
+  const feeEl = document.getElementById('settings-plan-fee');
+  if (!planEl || !feeEl) return;
+
+  planEl.addEventListener('change', async () => {
+    const plan = planEl.value;
+    // Fixed-price plans (api/pro/max_*) always have a canonical fee — overwrite
+    // whatever's in the input so the form shows the right number even before
+    // the backend echoes it back. For team/custom, pre-fill the suggested fee
+    // only when the user hasn't already typed one.
+    if (Object.prototype.hasOwnProperty.call(PLAN_FIXED_FEES, plan)) {
+      feeEl.value = PLAN_FIXED_FEES[plan];
+    } else {
+      const current = parseFloat(feeEl.value);
+      if (!Number.isFinite(current) || current === 0) {
+        feeEl.value = PLAN_DEFAULT_FEES[plan] ?? 0;
+      }
+    }
+    // Reshuffle the form (hide/show fee row, swap budget framing) before the
+    // server roundtrip so the UI is correct instantly.
+    applyPlanFormState(plan);
+    applyPlanChrome(plan, planLabelFor(plan), parseFloat(feeEl.value) || 0);
+    await saveSettings(collectSettings(), 'settings-plan-status');
+    loadBudget().catch(() => {});
+  });
+
+  feeEl.addEventListener('change', async () => {
+    applyPlanChrome(planEl.value, planLabelFor(planEl.value), parseFloat(feeEl.value) || 0);
+    await saveSettings(collectSettings(), 'settings-plan-fee-status');
+    loadBudget().catch(() => {});
+  });
+})();
+
+// Suggested monthly fees per plan. Used only to pre-fill the fee input when
+// the user changes the plan dropdown — never overrides an existing non-zero
+// value the user already typed.
+const PLAN_DEFAULT_FEES = {
+  api: 0, pro: 20, max_5x: 100, max_20x: 200, team: 30, custom: 0,
+};
+
+// Plans whose fee is determined by Anthropic, not by the user. The fee input
+// is hidden for these and a read-only pill is shown instead. Must stay in
+// sync with config.canonicalFees on the backend (which enforces this regardless
+// of what the UI sends).
+const PLAN_FIXED_FEES = { api: 0, pro: 20, max_5x: 100, max_20x: 200 };
+
+// applyPlanFormState toggles which Subscription fields are visible based on
+// plan and rewrites the Budget help text so each plan reads naturally:
+//
+//   API     — fee row hidden; budget = real-spend cap
+//   Pro/Max — fee row hidden, read-only pill shown; budget = value target
+//   Team    — fee row editable (per-seat varies); budget = value target
+//   Custom  — fee row editable; budget = value target
+//
+// Called from renderSettings (initial load) and the plan dropdown's change
+// handler so the form reshuffles immediately.
+function applyPlanFormState(plan) {
+  const feeRow = document.getElementById('settings-fee-row');
+  const fixedRow = document.getElementById('settings-fee-fixed-row');
+  const pill = document.getElementById('settings-fee-fixed-pill');
+  const budgetLabel = document.getElementById('settings-budget-label');
+  const budgetHelp = document.getElementById('settings-budget-help');
+
+  const isFixed = Object.prototype.hasOwnProperty.call(PLAN_FIXED_FEES, plan);
+  const isAPI = plan === 'api';
+
+  if (feeRow)   feeRow.classList.toggle('hidden', isFixed);
+  if (fixedRow) fixedRow.classList.toggle('hidden', !isFixed || isAPI);
+  if (pill && isFixed && !isAPI) {
+    pill.textContent = `$${PLAN_FIXED_FEES[plan].toFixed(2)}/mo (${planLabelFor(plan)})`;
+  }
+
+  // Budget framing differs by plan: real cap (API) vs. value target (sub).
+  if (budgetLabel && budgetHelp) {
+    if (isAPI) {
+      budgetLabel.textContent = 'Monthly cap ($)';
+      budgetHelp.innerHTML =
+        'Caps your real monthly API spend. The daily and weekly pace on the ' +
+        '<em>Budget</em> tab are derived (daily = monthly ÷ days in month; weekly = daily × 7). ' +
+        'Set <code>0</code> to disable the alert.';
+    } else {
+      budgetLabel.textContent = 'Monthly target ($)';
+      budgetHelp.innerHTML =
+        '<em>Optional.</em> Acts as a value target — aim for at least this much ' +
+        'API-equivalent usage to justify your subscription. Daily/weekly pace ' +
+        'shown on the <em>Budget</em> tab are derived from it. ' +
+        'Set <code>0</code> to disable.';
+    }
+  }
+}
+
+// planLabelFor mirrors SubscriptionConfig.PlanLabel on the backend so the
+// header badge can reflect a fresh dropdown change before the server has
+// echoed back the new value.
+function planLabelFor(plan) {
+  switch (plan) {
+    case 'pro':     return 'Pro';
+    case 'max_5x':  return 'Max 5×';
+    case 'max_20x': return 'Max 20×';
+    case 'team':    return 'Team';
+    case 'custom':  return 'Custom';
+    default:        return 'API';
+  }
+}
+
 function collectSettings() {
   const tz = document.getElementById('settings-tz').value;
   const pricing = (settingsData && settingsData.pricing) ? JSON.parse(JSON.stringify(settingsData.pricing)) : {};
@@ -895,11 +1108,19 @@ function collectSettings() {
     ? JSON.parse(JSON.stringify(settingsData.model_budgets)) : {};
   const monthlyEl = document.getElementById('settings-monthly-budget');
   const monthly = monthlyEl ? parseFloat(monthlyEl.value) : 0;
+  const planEl = document.getElementById('settings-plan');
+  const feeEl = document.getElementById('settings-plan-fee');
+  const plan = planEl ? planEl.value : 'api';
+  const fee = feeEl ? parseFloat(feeEl.value) : 0;
   return {
     timezone: tz,
     pricing,
     model_budgets: modelBudgets,
     monthly_budget: Number.isFinite(monthly) ? monthly : 0,
+    subscription: {
+      plan,
+      monthly_fee_usd: Number.isFinite(fee) ? fee : 0,
+    },
   };
 }
 

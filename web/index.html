@@ -17,6 +17,8 @@
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
     <div class="toolbar">
+      <span id="plan-badge" class="plan-badge hidden"
+            title="You're on a flat-fee subscription. Dollar values shown elsewhere are API-equivalent (what the same usage would cost at API rates), not your actual bill."></span>
       <span id="tz" class="muted"></span>
       <span id="live" class="muted live-dot" title="live updates">●</span>
       <button id="theme-toggle" class="icon-btn" title="toggle theme">◐</button>
@@ -28,14 +30,14 @@
     <div class="cards">
       <div class="card">
         <h2>Today</h2>
-        <div class="metric"><span class="label">Cost</span><span id="today-cost">—</span></div>
+        <div class="metric"><span class="label" data-cost-label>Cost</span><span id="today-cost">—</span></div>
         <div class="metric"><span class="label">Sessions</span><span id="today-sessions">—</span></div>
         <div class="metric"><span class="label">Messages</span><span id="today-messages">—</span></div>
         <div class="metric"><span class="label">Tool calls</span><span id="today-tools">—</span></div>
       </div>
       <div class="card">
         <h2>All time</h2>
-        <div class="metric"><span class="label">Cost</span><span id="all-cost">—</span></div>
+        <div class="metric"><span class="label" data-cost-label>Cost</span><span id="all-cost">—</span></div>
         <div class="metric"><span class="label">Sessions</span><span id="all-sessions">—</span></div>
         <div class="metric"><span class="label">Messages</span><span id="all-messages">—</span></div>
         <div class="metric"><span class="label">Tool calls</span><span id="all-tools">—</span></div>
@@ -70,7 +72,7 @@
         <h2>Models</h2>
         <table id="models-table">
           <thead>
-            <tr><th>Model</th><th>Msgs</th><th>Input</th><th>Output</th><th>Cost</th><th>$/msg</th></tr>
+            <tr><th>Model</th><th>Msgs</th><th>Input</th><th>Output</th><th data-cost-label>Cost</th><th data-cost-label>$/msg</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -86,7 +88,7 @@
     <h2>Daily breakdown</h2>
     <table id="daily-table">
       <thead>
-        <tr><th>Date</th><th>Sessions</th><th>Msgs</th><th>Input</th><th>Output</th><th>Cache rd</th><th>Cache cr</th><th>Cost</th></tr>
+        <tr><th>Date</th><th>Sessions</th><th>Msgs</th><th>Input</th><th>Output</th><th>Cache rd</th><th>Cache cr</th><th data-cost-label>Cost</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -97,7 +99,7 @@
     <h2>Projects</h2>
     <table id="projects-table">
       <thead>
-        <tr><th>Project</th><th>Sessions</th><th>Messages</th><th>Tools</th><th>Cost</th><th>Last active</th></tr>
+        <tr><th>Project</th><th>Sessions</th><th>Messages</th><th>Tools</th><th data-cost-label>Cost</th><th>Last active</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -114,7 +116,7 @@
     </form>
     <table id="sessions-table">
       <thead>
-        <tr><th>Ended</th><th>Title</th><th>Project</th><th>Model</th><th>Msgs</th><th>Tools</th><th>Cost</th><th>First prompt</th></tr>
+        <tr><th>Ended</th><th>Title</th><th>Project</th><th>Model</th><th>Msgs</th><th>Tools</th><th data-cost-label>Cost</th><th>First prompt</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -135,7 +137,7 @@
       <div id="sd-cards" class="cards" style="margin-top:16px">
         <div class="card">
           <h2>This session</h2>
-          <div class="metric"><span class="label">Cost</span><span id="sd-cost">—</span></div>
+          <div class="metric"><span class="label" data-cost-label>Cost</span><span id="sd-cost">—</span></div>
           <div class="metric"><span class="label">Messages</span><span id="sd-messages">—</span></div>
           <div class="metric"><span class="label">Tool calls</span><span id="sd-tools-count">—</span></div>
           <div class="metric"><span class="label">Started</span><span id="sd-started">—</span></div>
@@ -155,10 +157,10 @@
       </div>
 
       <div class="card" style="margin-top:16px">
-        <h2>Cost breakdown (this session)</h2>
+        <h2 data-cost-label>Cost breakdown (this session)</h2>
         <table id="sd-cost-breakdown-table">
           <thead>
-            <tr><th>Line item</th><th>Tokens</th><th>Rate</th><th>Cost</th></tr>
+            <tr><th>Line item</th><th>Tokens</th><th>Rate</th><th data-cost-label>Cost</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -166,7 +168,7 @@
 
       <div id="sd-charts" class="charts">
         <div class="chart-box">
-          <h2>Cost per response</h2>
+          <h2 data-cost-label>Cost per response</h2>
           <canvas id="sd-timeline-chart"></canvas>
         </div>
         <div class="chart-box">
@@ -191,9 +193,21 @@
       month in your configured timezone.
     </p>
     <div class="cards">
+      <div class="card hidden" id="sub-value-card">
+        <h2>Subscription value</h2>
+        <div class="metric"><span class="label">Plan</span><span id="sub-plan">—</span></div>
+        <div class="metric"><span class="label">You pay</span><span id="sub-fee">—</span></div>
+        <div class="metric"><span class="label">API value (MTD)</span><span id="sub-api-value">—</span></div>
+        <div class="metric"><span class="label">Net benefit</span><span id="sub-net">—</span></div>
+        <div class="metric"><span class="label">Multiplier</span><span id="sub-mult">—</span></div>
+        <div class="muted" id="sub-hint" style="margin-top:8px;">
+          Net benefit = API value − subscription fee. Multiplier ≥ 1.0 means
+          you're earning back your subscription.
+        </div>
+      </div>
       <div class="card">
         <h2>Today (pace)</h2>
-        <div class="metric"><span class="label">Spent</span><span id="budget-day-cost">—</span></div>
+        <div class="metric"><span class="label" data-cost-label>Spent</span><span id="budget-day-cost">—</span></div>
         <div class="metric"><span class="label">Pace</span><span id="budget-day-limit">—</span></div>
         <div class="metric"><span class="label">Remaining</span><span id="budget-day-remaining">—</span></div>
         <div class="metric"><span class="label">Used</span><span id="budget-day-pct">—</span></div>
@@ -204,7 +218,7 @@
       </div>
       <div class="card">
         <h2>This week (pace)</h2>
-        <div class="metric"><span class="label">Spent</span><span id="budget-week-cost">—</span></div>
+        <div class="metric"><span class="label" data-cost-label>Spent</span><span id="budget-week-cost">—</span></div>
         <div class="metric"><span class="label">Pace</span><span id="budget-week-limit">—</span></div>
         <div class="metric"><span class="label">Remaining</span><span id="budget-week-remaining">—</span></div>
         <div class="metric"><span class="label">Used</span><span id="budget-week-pct">—</span></div>
@@ -215,7 +229,7 @@
       </div>
       <div class="card">
         <h2>This month</h2>
-        <div class="metric"><span class="label">Spent</span><span id="budget-month-cost">—</span></div>
+        <div class="metric"><span class="label" data-cost-label>Spent</span><span id="budget-month-cost">—</span></div>
         <div class="metric"><span class="label">Budget</span><span id="budget-month-limit">—</span></div>
         <div class="metric"><span class="label">Remaining</span><span id="budget-month-remaining">—</span></div>
         <div class="metric"><span class="label">Used</span><span id="budget-month-pct">—</span></div>
@@ -247,15 +261,47 @@
         <span id="settings-tz-status" class="muted"></span>
       </div>
 
-      <h2 style="margin-top:24px">Budget</h2>
+      <h2 style="margin-top:24px">Subscription</h2>
       <p class="muted">
+        Tell Token Pulse how you actually pay Anthropic. On a flat-fee plan
+        (Pro, Max, Team) the dollar values shown across the dashboard are
+        <em>API-equivalent</em> — what the same usage would cost at API rates —
+        and the labels switch to "API value" so it's clear.
+      </p>
+      <div class="settings-row">
+        <label for="settings-plan">Plan</label>
+        <select id="settings-plan">
+          <option value="api">API (pay-as-you-go)</option>
+          <option value="pro">Pro (~$20/mo)</option>
+          <option value="max_5x">Max 5× (~$100/mo)</option>
+          <option value="max_20x">Max 20× (~$200/mo)</option>
+          <option value="team">Team (per seat)</option>
+          <option value="custom">Custom</option>
+        </select>
+        <span id="settings-plan-status" class="muted"></span>
+      </div>
+      <!-- Editable fee input — shown for Team / Custom plans only. -->
+      <div class="settings-row" id="settings-fee-row">
+        <label for="settings-plan-fee">Monthly fee ($)</label>
+        <input type="number" id="settings-plan-fee" class="settings-rate" step="0.01" min="0" placeholder="0">
+        <span id="settings-plan-fee-status" class="muted"></span>
+      </div>
+      <!-- Read-only fee display — shown for fixed-price plans (Pro, Max). -->
+      <div class="settings-row hidden" id="settings-fee-fixed-row">
+        <label>Monthly fee</label>
+        <span class="plan-badge" id="settings-fee-fixed-pill"></span>
+        <span class="muted">Determined by plan</span>
+      </div>
+
+      <h2 style="margin-top:24px">Budget</h2>
+      <p class="muted" id="settings-budget-help">
         Set a <strong>monthly</strong> budget in USD. The daily and weekly pace
         shown on the <em>Budget</em> tab are derived from this value
         (daily = monthly ÷ days in current month; weekly = daily × 7).
         Set <code>0</code> to disable the alert.
       </p>
       <div class="settings-row">
-        <label for="settings-monthly-budget">Monthly ($)</label>
+        <label for="settings-monthly-budget" id="settings-budget-label">Monthly ($)</label>
         <input type="number" id="settings-monthly-budget" class="settings-rate" step="0.01" min="0" placeholder="0">
         <span id="settings-monthly-budget-status" class="muted"></span>
       </div>

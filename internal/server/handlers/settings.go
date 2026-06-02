@@ -46,12 +46,13 @@ func NewSettingsHandler(provider *config.Provider, configPath string, observed o
 // weekly pace are derived from it by the Budget analytics endpoint, so the UI
 // never needs to set them directly.
 type settingsResponse struct {
-	Timezone         string                `json:"timezone"`
-	Pricing          config.PricingPresets `json:"pricing"`
-	ModelBudgets     map[string]float64    `json:"model_budgets"`
-	MonthlyBudgetUSD float64               `json:"monthly_budget"`
-	ObservedModels   []string              `json:"observed_models,omitempty"`
-	ConfigPath       string                `json:"config_path,omitempty"`
+	Timezone         string                    `json:"timezone"`
+	Pricing          config.PricingPresets     `json:"pricing"`
+	ModelBudgets     map[string]float64        `json:"model_budgets"`
+	MonthlyBudgetUSD float64                   `json:"monthly_budget"`
+	Subscription     config.SubscriptionConfig `json:"subscription"`
+	ObservedModels   []string                  `json:"observed_models,omitempty"`
+	ConfigPath       string                    `json:"config_path,omitempty"`
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +75,7 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Pricing:          cfg.Pricing,
 		ModelBudgets:     modelBudgets,
 		MonthlyBudgetUSD: cfg.Alerts.MonthlyBudgetUSD,
+		Subscription:     cfg.Subscription,
 		ObservedModels:   observed,
 		ConfigPath:       h.configPath,
 	}
@@ -87,11 +89,23 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	monthly := in.MonthlyBudgetUSD
+	sub := in.Subscription
+	// Default plan to "api" so omitted/empty values stay valid (the writer
+	// validator rejects "").
+	if sub.Plan == "" {
+		sub.Plan = "api"
+	}
+	// Plans with a fixed published price (api, pro, max_5x, max_20x) win over
+	// whatever the client posts — keeps user input from drifting from the
+	// canonical Anthropic price and stops a hand-edited config.yaml from
+	// reporting bogus "net benefit" numbers.
+	sub.MonthlyFeeUSD = config.NormalizedFee(sub.Plan, sub.MonthlyFeeUSD)
 	patch := config.SettingsPatch{
 		Timezone:         in.Timezone,
 		Pricing:          in.Pricing,
 		ModelBudgets:     in.ModelBudgets,
 		MonthlyBudgetUSD: &monthly,
+		Subscription:     &sub,
 	}
 	if err := config.ValidateSettingsPatch(patch); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -130,6 +144,7 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		Pricing:          newCfg.Pricing,
 		ModelBudgets:     modelBudgets,
 		MonthlyBudgetUSD: newCfg.Alerts.MonthlyBudgetUSD,
+		Subscription:     newCfg.Subscription,
 		ObservedModels:   observed,
 		ConfigPath:       h.configPath,
 	})
