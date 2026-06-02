@@ -13,6 +13,7 @@
       <button class="tab active" data-tab="overview">Overview</button>
       <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="sessions">Sessions</button>
+      <button class="tab" data-tab="budget">Budget</button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
     <div class="toolbar">
@@ -179,6 +180,54 @@
     </div>
   </section>
 
+  <!-- Budget tab -->
+  <section class="view hidden" id="view-budget">
+    <h2>Budget <span class="muted" id="budget-tz"></span></h2>
+    <p class="muted">
+      You set one <strong>monthly</strong> budget in Settings. The daily and
+      weekly pace shown here are derived from it
+      (<span id="budget-derivation">daily = monthly ÷ days in month, weekly = daily × 7</span>).
+      Periods reset at midnight (daily), Monday 00:00 (weekly), and 1st of the
+      month in your configured timezone.
+    </p>
+    <div class="cards">
+      <div class="card">
+        <h2>Today (pace)</h2>
+        <div class="metric"><span class="label">Spent</span><span id="budget-day-cost">—</span></div>
+        <div class="metric"><span class="label">Pace</span><span id="budget-day-limit">—</span></div>
+        <div class="metric"><span class="label">Remaining</span><span id="budget-day-remaining">—</span></div>
+        <div class="metric"><span class="label">Used</span><span id="budget-day-pct">—</span></div>
+        <div class="budget-bar" id="budget-day-bar-wrap">
+          <div class="budget-bar-fill" id="budget-day-bar"></div>
+        </div>
+        <div class="muted" id="budget-day-window"></div>
+      </div>
+      <div class="card">
+        <h2>This week (pace)</h2>
+        <div class="metric"><span class="label">Spent</span><span id="budget-week-cost">—</span></div>
+        <div class="metric"><span class="label">Pace</span><span id="budget-week-limit">—</span></div>
+        <div class="metric"><span class="label">Remaining</span><span id="budget-week-remaining">—</span></div>
+        <div class="metric"><span class="label">Used</span><span id="budget-week-pct">—</span></div>
+        <div class="budget-bar" id="budget-week-bar-wrap">
+          <div class="budget-bar-fill" id="budget-week-bar"></div>
+        </div>
+        <div class="muted" id="budget-week-window"></div>
+      </div>
+      <div class="card">
+        <h2>This month</h2>
+        <div class="metric"><span class="label">Spent</span><span id="budget-month-cost">—</span></div>
+        <div class="metric"><span class="label">Budget</span><span id="budget-month-limit">—</span></div>
+        <div class="metric"><span class="label">Remaining</span><span id="budget-month-remaining">—</span></div>
+        <div class="metric"><span class="label">Used</span><span id="budget-month-pct">—</span></div>
+        <div class="budget-bar" id="budget-month-bar-wrap">
+          <div class="budget-bar-fill" id="budget-month-bar"></div>
+        </div>
+        <div class="muted" id="budget-month-window"></div>
+      </div>
+    </div>
+    <p class="muted" id="budget-empty-hint" style="margin-top:8px;"></p>
+  </section>
+
   <!-- Settings tab -->
   <section class="view hidden" id="view-settings">
     <h2>Settings <span class="muted" id="settings-path"></span></h2>
@@ -196,6 +245,19 @@
         <select id="settings-tz"></select>
         <span class="muted" id="settings-tz-current"></span>
         <span id="settings-tz-status" class="muted"></span>
+      </div>
+
+      <h2 style="margin-top:24px">Budget</h2>
+      <p class="muted">
+        Set a <strong>monthly</strong> budget in USD. The daily and weekly pace
+        shown on the <em>Budget</em> tab are derived from this value
+        (daily = monthly ÷ days in current month; weekly = daily × 7).
+        Set <code>0</code> to disable the alert.
+      </p>
+      <div class="settings-row">
+        <label for="settings-monthly-budget">Monthly ($)</label>
+        <input type="number" id="settings-monthly-budget" class="settings-rate" step="0.01" min="0" placeholder="0">
+        <span id="settings-monthly-budget-status" class="muted"></span>
       </div>
 
       <h2 style="margin-top:24px">Pricing</h2>

@@ -15,11 +15,18 @@ import (
 // SettingsPatch is the subset of Config that the Settings UI is allowed to
 // mutate. Anything else in config.yaml (server host/port, claude_dir, storage
 // path) is preserved verbatim — including comments and key ordering. The alerts
-// section is merged: daily_budget and model_budgets are updated, notify is preserved.
+// section is merged: monthly_budget and model_budgets are updated; notify is
+// preserved.
+//
+// MonthlyBudgetUSD uses a pointer type so the JSON/YAML wire format can
+// distinguish "field omitted" (leave unchanged) from "explicitly set to 0"
+// (disable the alert). The HTTP layer always sends the field so in practice
+// a nil pointer only appears in programmatic patches.
 type SettingsPatch struct {
-	Timezone     string             `yaml:"timezone"`
-	Pricing      PricingPresets     `yaml:"pricing"`
-	ModelBudgets map[string]float64 `yaml:"model_budgets"`
+	Timezone         string             `yaml:"timezone"`
+	Pricing          PricingPresets     `yaml:"pricing"`
+	ModelBudgets     map[string]float64 `yaml:"model_budgets"`
+	MonthlyBudgetUSD *float64           `yaml:"monthly_budget,omitempty"`
 }
 
 // ValidateSettingsPatch is shared between the writer and the HTTP handler so
@@ -51,6 +58,15 @@ func ValidateSettingsPatch(p SettingsPatch) error {
 		}
 		if math.IsNaN(budget) || math.IsInf(budget, 0) {
 			return fmt.Errorf("model budget for %q must be a finite number", name)
+		}
+	}
+	if p.MonthlyBudgetUSD != nil {
+		v := *p.MonthlyBudgetUSD
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return errors.New("monthly_budget must be a finite number")
+		}
+		if v < 0 {
+			return errors.New("monthly_budget must be ≥ 0")
 		}
 	}
 	return nil
@@ -140,8 +156,8 @@ func WriteSettings(path string, patch SettingsPatch) error {
 	}
 	setOrInsert(mapping, "pricing", priceNode)
 
-	// For alerts, merge model_budgets into the existing alerts subtree,
-	// preserving daily_budget and notify.
+	// For alerts, merge budgets into the existing alerts subtree, preserving
+	// any keys we don't touch (notably notify).
 	alertsNode := getOrInsert(mapping, "alerts")
 	if alertsNode.Kind == yaml.MappingNode {
 		mbNode, err := nodeFromValue(patch.ModelBudgets)
@@ -149,6 +165,13 @@ func WriteSettings(path string, patch SettingsPatch) error {
 			return err
 		}
 		setOrInsert(alertsNode, "model_budgets", mbNode)
+		if patch.MonthlyBudgetUSD != nil {
+			n, err := nodeFromValue(*patch.MonthlyBudgetUSD)
+			if err != nil {
+				return err
+			}
+			setOrInsert(alertsNode, "monthly_budget", n)
+		}
 	}
 
 	out, err := yaml.Marshal(&root)

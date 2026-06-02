@@ -69,6 +69,15 @@ func (h *Handlers) Projection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, p)
 }
 
+func (h *Handlers) Budget(w http.ResponseWriter, r *http.Request) {
+	b, err := h.eng.Budget(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, b)
+}
+
 func (h *Handlers) Cache(w http.ResponseWriter, r *http.Request) {
 	c, err := h.eng.Cache(r.Context())
 	if err != nil {

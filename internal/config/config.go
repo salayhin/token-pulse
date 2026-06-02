@@ -20,9 +20,14 @@ type Config struct {
 }
 
 type AlertsConfig struct {
-	DailyBudgetUSD float64            `mapstructure:"daily_budget"` // 0 disables
-	ModelBudgets   map[string]float64 `mapstructure:"model_budgets" yaml:"model_budgets" json:"model_budgets"` // per-model daily budgets
-	Notify         bool               `mapstructure:"notify"` // macOS osascript
+	// MonthlyBudgetUSD is the single source of truth for budget alerts.
+	// Daily and weekly pace are derived from it in analytics.Budget():
+	//   daily_pace  = monthly / days_in_current_month
+	//   weekly_pace = daily_pace * 7
+	// 0 disables all budget alerts.
+	MonthlyBudgetUSD float64            `mapstructure:"monthly_budget"`
+	ModelBudgets     map[string]float64 `mapstructure:"model_budgets" yaml:"model_budgets" json:"model_budgets"` // per-model daily budgets
+	Notify           bool               `mapstructure:"notify"`                                                 // macOS osascript
 }
 
 type ServerConfig struct {
@@ -141,7 +146,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 3456)
 	v.SetDefault("storage.path", filepath.Join(home, ".config", "tokenpulse", "data.db"))
-	v.SetDefault("alerts.daily_budget", 0.0)
+	v.SetDefault("alerts.monthly_budget", 0.0)
 	v.SetDefault("alerts.notify", false)
 
 	v.SetDefault("pricing.preset", "anthropic-api")

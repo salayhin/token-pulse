@@ -79,6 +79,25 @@ h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: v
 .label { color: var(--muted); }
 .metric span:last-child { font-variant-numeric: tabular-nums; font-weight: 500; }
 
+/* Budget progress bar: scales with --pct (0..100). Color shifts to warn at
+   ≥75% and to a stronger warn tone when over budget. */
+.budget-bar {
+  margin-top: 12px;
+  height: 8px;
+  background: var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.budget-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-2);
+  transition: width .25s ease;
+}
+.budget-bar-fill.warn { background: var(--warn); }
+.budget-bar-fill.over { background: #ff6b6b; }
+.budget-bar.disabled .budget-bar-fill { background: var(--border); }
+
 .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 24px; }
 .chart-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-height: 280px; }
 canvas { max-height: 240px; }

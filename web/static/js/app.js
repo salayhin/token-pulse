@@ -179,6 +179,7 @@ function activateTab(name, opts = {}) {
   if (name === 'overview') loadOverview();
   if (name === 'projects') loadProjects();
   if (name === 'sessions' && !opts.suppressLoad) loadSessions(true);
+  if (name === 'budget') loadBudget();
   if (name === 'settings') loadSettings();
   if (!opts.suppressHash) setHash(name);
 }
@@ -339,6 +340,83 @@ async function loadOverview() {
   trendsChartRender(trends.trends || []);
   modelsTableRender(models.models || []);
   loadOverviewSkills();
+}
+
+// ---------- Budget ----------
+// Renders today/this-week spend against the configured budgets. The bar
+// turns yellow at ≥75% and red when over budget; if no budget is set,
+// the bar is muted and the metric label says "not set".
+async function loadBudget() {
+  try {
+    const data = await getJSON('/api/v1/budget');
+    document.getElementById('budget-tz').textContent = data.timezone ? `(${data.timezone})` : '';
+
+    // Replace the generic derivation hint with the concrete numbers when set.
+    const dHint = document.getElementById('budget-derivation');
+    if (dHint) {
+      if (data.monthly_budget_usd > 0 && data.days_in_month > 0) {
+        dHint.textContent =
+          `daily = $${data.derived_daily_usd.toFixed(2)} ` +
+          `($${data.monthly_budget_usd.toFixed(2)} ÷ ${data.days_in_month}d), ` +
+          `weekly = $${data.derived_weekly_usd.toFixed(2)}`;
+      } else {
+        dHint.textContent = 'daily = monthly ÷ days in month, weekly = daily × 7';
+      }
+    }
+
+    renderBudgetCard('day', data.day);
+    renderBudgetCard('week', data.week);
+    renderBudgetCard('month', data.month);
+
+    const hint = document.getElementById('budget-empty-hint');
+    if (hint) {
+      hint.textContent = data.monthly_budget_usd > 0
+        ? ''
+        : 'No monthly budget configured yet — set one in Settings → Budget.';
+    }
+  } catch (err) {
+    console.error('Failed to load budget:', err);
+  }
+}
+
+function renderBudgetCard(prefix, p) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set(`budget-${prefix}-cost`, fmtUSD(p.cost_usd));
+  set(`budget-${prefix}-limit`, p.budget_usd > 0 ? fmtUSD(p.budget_usd) : 'not set');
+  if (p.budget_usd > 0) {
+    set(`budget-${prefix}-remaining`,
+        (p.remaining_usd >= 0 ? '' : '−') + fmtUSD(Math.abs(p.remaining_usd)));
+    set(`budget-${prefix}-pct`, p.used_percent.toFixed(1) + '%');
+  } else {
+    set(`budget-${prefix}-remaining`, '—');
+    set(`budget-${prefix}-pct`, '—');
+  }
+
+  // Window label, e.g. "Mon Jun 02 – Mon Jun 09 (excl.)"
+  const win = document.getElementById(`budget-${prefix}-window`);
+  if (win) {
+    const fmt = (iso) => {
+      try { return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: '2-digit' }); }
+      catch { return iso; }
+    };
+    win.textContent = `${fmt(p.start)} → ${fmt(p.end)}`;
+  }
+
+  // Progress bar
+  const wrap = document.getElementById(`budget-${prefix}-bar-wrap`);
+  const fill = document.getElementById(`budget-${prefix}-bar`);
+  if (!wrap || !fill) return;
+  if (p.budget_usd <= 0) {
+    wrap.classList.add('disabled');
+    fill.style.width = '0%';
+    fill.classList.remove('warn', 'over');
+    return;
+  }
+  wrap.classList.remove('disabled');
+  const pct = Math.max(0, Math.min(100, p.used_percent));
+  fill.style.width = pct + '%';
+  fill.classList.toggle('over', p.used_percent >= 100);
+  fill.classList.toggle('warn', p.used_percent >= 75 && p.used_percent < 100);
 }
 
 // ---------- Projects ----------
@@ -587,6 +665,7 @@ function connectEvents() {
     if (active === 'overview') loadOverview();
     if (active === 'projects') loadProjects();
     if (active === 'sessions') loadSessions(true);
+    if (active === 'budget') loadBudget();
   });
   es.onerror = () => live.classList.add('stale');
 }
@@ -612,7 +691,7 @@ async function dispatchHash() {
     await runSearch(decodeURIComponent(arg), { suppressHash: true });
     return;
   }
-  if (['overview', 'projects', 'sessions', 'settings', 'tools', 'search'].includes(head)) {
+  if (['overview', 'projects', 'sessions', 'budget', 'settings', 'tools', 'search'].includes(head)) {
     activateTab(head, { suppressHash: true });
     return;
   }
@@ -689,6 +768,10 @@ function renderSettings(data) {
     ).join('');
     if (tzCur) tzCur.textContent = `Current: ${current}`;
   }
+
+  // Budget (single monthly value; daily/weekly are derived on the Budget tab)
+  const monthlyEl = document.getElementById('settings-monthly-budget');
+  if (monthlyEl) monthlyEl.value = data.monthly_budget != null ? data.monthly_budget : 0;
 
   // Pricing table
   renderPricingTable(data);
@@ -793,10 +876,31 @@ document.getElementById('settings-tz').addEventListener('change', async () => {
   await saveSettings(collectSettings(), 'settings-tz-status');
 });
 
+// Monthly budget: save on blur (so users can finish typing) rather than per-keystroke.
+(() => {
+  const el = document.getElementById('settings-monthly-budget');
+  if (!el) return;
+  el.addEventListener('change', async () => {
+    await saveSettings(collectSettings(), 'settings-monthly-budget-status');
+    // The Budget tab depends on this value — refresh in the background so
+    // users see the derived daily/weekly numbers update without clicking.
+    loadBudget().catch(() => {});
+  });
+})();
+
 function collectSettings() {
   const tz = document.getElementById('settings-tz').value;
   const pricing = (settingsData && settingsData.pricing) ? JSON.parse(JSON.stringify(settingsData.pricing)) : {};
-  return { timezone: tz, pricing };
+  const modelBudgets = (settingsData && settingsData.model_budgets)
+    ? JSON.parse(JSON.stringify(settingsData.model_budgets)) : {};
+  const monthlyEl = document.getElementById('settings-monthly-budget');
+  const monthly = monthlyEl ? parseFloat(monthlyEl.value) : 0;
+  return {
+    timezone: tz,
+    pricing,
+    model_budgets: modelBudgets,
+    monthly_budget: Number.isFinite(monthly) ? monthly : 0,
+  };
 }
 
 async function saveSettings(patch, statusId) {

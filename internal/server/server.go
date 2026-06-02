@@ -48,6 +48,7 @@ func New(provider *config.Provider, configPath string, eng *analytics.Engine, bu
 			r.Get("/stats/trends", h.Trends)
 			r.Get("/stats/projections", h.Projection)
 			r.Get("/cache", h.Cache)
+			r.Get("/budget", h.Budget)
 			r.Get("/skills", h.Skills)
 			r.Get("/projects", h.Projects)
 			r.Get("/projects/{slug}/stats", h.ProjectStats)

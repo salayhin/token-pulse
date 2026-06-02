@@ -41,12 +41,17 @@ func NewSettingsHandler(provider *config.Provider, configPath string, observed o
 // observed_models is GET-only — included so the UI can render one row per
 // real model the user is actually billed for, instead of the abstract
 // "fallback" pseudo-row.
+//
+// monthly_budget is USD per calendar month; 0 disables the alert. Daily and
+// weekly pace are derived from it by the Budget analytics endpoint, so the UI
+// never needs to set them directly.
 type settingsResponse struct {
-	Timezone       string                `json:"timezone"`
-	Pricing        config.PricingPresets `json:"pricing"`
-	ModelBudgets   map[string]float64    `json:"model_budgets"`
-	ObservedModels []string              `json:"observed_models,omitempty"`
-	ConfigPath     string                `json:"config_path,omitempty"`
+	Timezone         string                `json:"timezone"`
+	Pricing          config.PricingPresets `json:"pricing"`
+	ModelBudgets     map[string]float64    `json:"model_budgets"`
+	MonthlyBudgetUSD float64               `json:"monthly_budget"`
+	ObservedModels   []string              `json:"observed_models,omitempty"`
+	ConfigPath       string                `json:"config_path,omitempty"`
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -65,11 +70,12 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		modelBudgets = make(map[string]float64)
 	}
 	resp := settingsResponse{
-		Timezone:       cfg.Timezone,
-		Pricing:        cfg.Pricing,
-		ModelBudgets:   modelBudgets,
-		ObservedModels: observed,
-		ConfigPath:     h.configPath,
+		Timezone:         cfg.Timezone,
+		Pricing:          cfg.Pricing,
+		ModelBudgets:     modelBudgets,
+		MonthlyBudgetUSD: cfg.Alerts.MonthlyBudgetUSD,
+		ObservedModels:   observed,
+		ConfigPath:       h.configPath,
 	}
 	writeJSON(w, resp)
 }
@@ -80,10 +86,12 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
+	monthly := in.MonthlyBudgetUSD
 	patch := config.SettingsPatch{
-		Timezone:     in.Timezone,
-		Pricing:      in.Pricing,
-		ModelBudgets: in.ModelBudgets,
+		Timezone:         in.Timezone,
+		Pricing:          in.Pricing,
+		ModelBudgets:     in.ModelBudgets,
+		MonthlyBudgetUSD: &monthly,
 	}
 	if err := config.ValidateSettingsPatch(patch); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -118,10 +126,11 @@ func (h *SettingsHandler) Put(w http.ResponseWriter, r *http.Request) {
 		modelBudgets = make(map[string]float64)
 	}
 	writeJSON(w, settingsResponse{
-		Timezone:       newCfg.Timezone,
-		Pricing:        newCfg.Pricing,
-		ModelBudgets:   modelBudgets,
-		ObservedModels: observed,
-		ConfigPath:     h.configPath,
+		Timezone:         newCfg.Timezone,
+		Pricing:          newCfg.Pricing,
+		ModelBudgets:     modelBudgets,
+		MonthlyBudgetUSD: newCfg.Alerts.MonthlyBudgetUSD,
+		ObservedModels:   observed,
+		ConfigPath:       h.configPath,
 	})
 }

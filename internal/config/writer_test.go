@@ -26,7 +26,7 @@ storage:
   path: "~/.config/claude-token-lens/data.db"
 
 alerts:
-  daily_budget: 25.0
+  monthly_budget: 750.0
   notify: true
 
 # USD per 1M tokens.
@@ -81,7 +81,7 @@ pricing:
 		`host: "127.0.0.1"`,
 		"port: 3456",
 		`path: "~/.config/claude-token-lens/data.db"`,
-		"daily_budget: 25",
+		"monthly_budget: 750",
 		"notify: true",
 		`claude_dir: "~/.claude"`,
 	} {
@@ -117,7 +117,7 @@ pricing:
 	if c.Server.Port != 3456 || c.Server.Host != "127.0.0.1" {
 		t.Errorf("server config drifted: %+v", c.Server)
 	}
-	if c.Alerts.DailyBudgetUSD != 25.0 || !c.Alerts.Notify {
+	if c.Alerts.MonthlyBudgetUSD != 750.0 || !c.Alerts.Notify {
 		t.Errorf("alerts drifted: %+v", c.Alerts)
 	}
 }

@@ -241,6 +241,108 @@ func (e *Engine) Daily(ctx context.Context, days int) ([]DailyRow, error) {
 	return out, nil
 }
 
+// BudgetPeriod is one row of the budget summary: a label, the cost actually
+// spent in the period, the pace allotted to the period (derived from the
+// configured monthly budget; 0 = no limit), and the period boundaries in the
+// user's configured timezone.
+type BudgetPeriod struct {
+	Period      string    `json:"period"`        // "day", "week", "month"
+	CostUSD     float64   `json:"cost_usd"`      // actual spend in the period
+	BudgetUSD   float64   `json:"budget_usd"`    // budget for the period (derived for day/week)
+	Remaining   float64   `json:"remaining_usd"` // budget - cost; can be negative
+	UsedPercent float64   `json:"used_percent"`  // 0..(>100); only meaningful when budget>0
+	Start       time.Time `json:"start"`
+	End         time.Time `json:"end"` // exclusive upper bound
+}
+
+type BudgetResponse struct {
+	Day            BudgetPeriod `json:"day"`
+	Week           BudgetPeriod `json:"week"`
+	Month          BudgetPeriod `json:"month"`
+	MonthlyBudget  float64      `json:"monthly_budget_usd"`  // configured budget (== Month.BudgetUSD)
+	DaysInMonth    int          `json:"days_in_month"`       // calendar days in current month
+	DerivedDaily   float64      `json:"derived_daily_usd"`   // monthly / days_in_month
+	DerivedWeekly  float64      `json:"derived_weekly_usd"`  // derived_daily * 7
+	Timezone       string       `json:"timezone"`
+}
+
+// Budget returns today's, this-week's, and this-month's spend alongside
+// budgets derived from the configured monthly budget. Periods are bucketed in
+// cfg.Location(); weeks start Monday (ISO 8601). When the monthly budget is 0
+// all periods report budget=0 and UsedPercent=0 — the UI suppresses progress
+// bars in that case.
+//
+// Derivation:
+//
+//	daily_pace  = monthly / days_in_current_calendar_month
+//	weekly_pace = daily_pace * 7
+//
+// Using calendar days (28/29/30/31) keeps the daily pace honest across short
+// and long months: a $300/mo budget gives $10/day in June (30d) and ~$9.68/day
+// in July (31d).
+func (e *Engine) Budget(ctx context.Context) (*BudgetResponse, error) {
+	loc := e.cfg.Location()
+	now := time.Now().In(loc)
+
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	// Monday-anchored ISO week.
+	dow := int(now.Weekday()+6) % 7
+	startOfWeek := time.Date(now.Year(), now.Month(), now.Day()-dow, 0, 0, 0, 0, loc)
+	endOfWeek := startOfWeek.AddDate(0, 0, 7)
+
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+	daysInMonth := int(endOfMonth.Sub(startOfMonth).Hours() / 24)
+
+	monthly := e.cfg.Alerts.MonthlyBudgetUSD
+	var derivedDaily, derivedWeekly float64
+	if monthly > 0 && daysInMonth > 0 {
+		derivedDaily = monthly / float64(daysInMonth)
+		derivedWeekly = derivedDaily * 7
+	}
+
+	dayCost, _, err := e.costAndSavings(ctx, startOfDay.UTC(), time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	weekCost, _, err := e.costAndSavings(ctx, startOfWeek.UTC(), time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	monthCost, _, err := e.costAndSavings(ctx, startOfMonth.UTC(), time.Time{})
+	if err != nil {
+		return nil, err
+	}
+
+	mk := func(label string, cost, budget float64, start, end time.Time) BudgetPeriod {
+		pct := 0.0
+		if budget > 0 {
+			pct = (cost / budget) * 100
+		}
+		return BudgetPeriod{
+			Period:      label,
+			CostUSD:     cost,
+			BudgetUSD:   budget,
+			Remaining:   budget - cost,
+			UsedPercent: pct,
+			Start:       start,
+			End:         end,
+		}
+	}
+	return &BudgetResponse{
+		Day:           mk("day", dayCost, derivedDaily, startOfDay, endOfDay),
+		Week:          mk("week", weekCost, derivedWeekly, startOfWeek, endOfWeek),
+		Month:         mk("month", monthCost, monthly, startOfMonth, endOfMonth),
+		MonthlyBudget: monthly,
+		DaysInMonth:   daysInMonth,
+		DerivedDaily:  derivedDaily,
+		DerivedWeekly: derivedWeekly,
+		Timezone:      e.cfg.Timezone,
+	}, nil
+}
+
 type CacheStats struct {
 	CacheCreateTokens int     `json:"cache_create_tokens"`
 	CacheReadTokens   int     `json:"cache_read_tokens"`
