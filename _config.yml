@@ -1,0 +1,64 @@
+# GitHub Pages Configuration for Token Pulse
+
+# Site metadata
+title: Token Pulse
+description: Local dashboard & CLI for monitoring Claude Code token usage, costs, and cache savings
+logo: /assets/logo.png
+
+# Theme
+theme: jekyll-theme-minimal
+remote_theme: pages-themes/minimal@v0.2.0
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+# Markdown
+markdown: kramdown
+kramdown:
+  auto_ids: true
+  toc_levels: 2..3
+
+# Collections
+collections:
+  guides:
+    output: true
+    permalink: /guides/:name
+
+# Navigation
+header_links:
+  - title: Features
+    url: /#-features
+  - title: Quick Start
+    url: /#-quick-start
+  - title: Documentation
+    url: /#documentation
+  - title: GitHub
+    url: https://github.com/salayhin/token-pulse
+
+# Footer
+footer: "Made with ❤️ for Claude Code users tracking their token usage locally."
+
+# Google Analytics (optional)
+google_analytics: false
+
+# URL configuration
+url: https://salayhin.github.io/token-pulse
+baseurl: /token-pulse
+
+# Site author
+author: Salayhin
+github_username: salayhin
+
+# Exclude from build
+exclude:
+  - Makefile
+  - .golangci.yml
+  - .github
+  - configs
+  - internal
+  - cmd
+  - go.mod
+  - go.sum
