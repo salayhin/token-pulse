@@ -1183,7 +1183,7 @@ function renderRebuildHistory(history) {
     rebuildProgress.style.borderLeftColor = 'var(--accent-2)';
     rebuildBtn.disabled = false;
 
-    // Add new row to rebuild history table immediately
+    // Add new row to rebuild history table immediately (do NOT re-fetch to avoid overwriting)
     const tbody = document.getElementById('dm-rebuild-tbody');
     if (tbody) {
       // Remove "No rebuilds yet" message if present
@@ -1235,6 +1235,34 @@ function renderRebuildHistory(history) {
     rebuildStats.innerHTML = `Error: ${data.error}`;
     rebuildProgress.style.borderLeftColor = 'var(--warn)';
     rebuildBtn.disabled = false;
+
+    // Add error row to rebuild history table
+    const tbody = document.getElementById('dm-rebuild-tbody');
+    if (tbody) {
+      // Remove "No rebuilds yet" message if present
+      if (tbody.children.length === 1 && tbody.children[0].textContent.includes('No rebuilds yet')) {
+        tbody.innerHTML = '';
+      }
+
+      const completedStr = new Date().toLocaleString(undefined, {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+
+      const errorRow = `
+        <tr style="border-bottom: 1px solid var(--border);">
+          <td style="padding: 8px; color: var(--warn, #ff9800); font-weight: 500;">Failed</td>
+          <td style="padding: 8px; font-size: 12px; color: var(--muted);">${completedStr}</td>
+          <td colspan="6" style="padding: 8px; font-size: 12px; color: var(--muted);">${data.error}</td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML('afterbegin', errorRow);
+
+      // Keep only last 10 rows
+      while (tbody.children.length > 10) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    }
 
     // Hide progress box after showing error
     setTimeout(() => {
