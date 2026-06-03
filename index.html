@@ -265,7 +265,7 @@
         /* Stats Section */
         .stats-section {
             background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            padding: 3rem 2rem;
+            padding: 4rem 2rem;
             color: white;
         }
 
@@ -276,19 +276,51 @@
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2.5rem;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
             text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-8px);
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
         }
 
         .stat-item h3 {
             font-size: 2.5rem;
             margin-bottom: 0.5rem;
+            font-weight: 700;
         }
 
         .stat-item p {
-            font-size: 1rem;
+            font-size: 0.95rem;
             opacity: 0.9;
+            margin-bottom: 0;
+            line-height: 1.5;
+        }
+
+        .stat-description {
+            font-size: 0.85rem;
+            opacity: 0.75;
+            margin-top: 0.75rem;
+            font-style: italic;
         }
 
         /* Footer */
@@ -477,12 +509,16 @@
         <div class="stats-content">
             <div class="stats-grid">
                 <div class="stat-item">
+                    <span class="stat-icon">🔒</span>
                     <h3>100%</h3>
                     <p>Local • Private</p>
+                    <div class="stat-description">All data stays on your machine. No cloud sync, no external APIs, no tracking</div>
                 </div>
                 <div class="stat-item">
+                    <span class="stat-icon">📊</span>
                     <h3>∞</h3>
                     <p>Sessions Tracked</p>
+                    <div class="stat-description">No limits on how many Claude Code sessions you monitor and analyze</div>
                 </div>
             </div>
         </div>
@@ -659,7 +695,6 @@ make build
     <footer>
         <div class="footer-content">
             <div class="footer-links">
-                <a href="README.md">Documentation</a>
                 <a href="docs/FEATURES.md">Features Guide</a>
                 <a href="CONTRIBUTING.md">Contributing</a>
                 <a href="https://github.com/salayhin/token-pulse">GitHub</a>

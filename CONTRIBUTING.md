@@ -100,17 +100,6 @@ Then create a Pull Request on GitHub with:
 - Related issues (if any)
 - Screenshots/demos (if applicable)
 
-## Areas for Contribution
-
-### High-Impact Features
-- [ ] WebSocket support for real-time updates
-- [ ] Multi-user support with authentication
-- [ ] Database query optimization
-- [ ] Export to more formats (Parquet, Excel)
-- [ ] API rate limiting and caching
-- [ ] Dark theme polish
-- [ ] Mobile app (native)
-
 ### Bug Fixes
 - Check [GitHub Issues](https://github.com/salayhin/token-pulse/issues)
 - Look for "help wanted" or "good first issue" labels
