@@ -153,6 +153,12 @@ tbody tr:hover { background: var(--hover); cursor: pointer; }
 .btn.back { margin-bottom: 0; }
 a.btn { text-decoration: none; display: inline-block; }
 
+.btn-small {
+  background: var(--btn-bg); color: var(--text); border: 1px solid var(--btn-border);
+  padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+.btn-small:hover { background: var(--btn-bg-hover); }
+
 #sd-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .focus-only { display: none; }
 body.focus-mode .focus-only { display: inline-flex; }

@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Token Pulse - Local dashboard for Claude Code token usage, costs, and cache savings">
+    <meta name="keywords" content="Claude Code, token usage, dashboard, analytics, cost tracking">
+    <title>Token Pulse - Claude Code Token Usage Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1e40af;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+            --bg-light: #f9fafb;
+            --bg-white: #ffffff;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: var(--text);
+            line-height: 1.6;
+            background: var(--bg-light);
+        }
+
+        /* Header */
+        header {
+            background: var(--bg-white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .btn-github {
+            background: var(--primary);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: background 0.3s;
+        }
+
+        .btn-github:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Hero Section */
+        .hero {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 6rem 2rem 4rem;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-light);
+        }
+
+        /* Features Section */
+        .features {
+            max-width: 1200px;
+            margin: 4rem auto 0;
+            padding: 4rem 2rem;
+        }
+
+        .features h2 {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        /* Tabs Section */
+        .tabs-section {
+            background: white;
+            padding: 4rem 2rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .tabs-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .tabs-content h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .tabs-content > p {
+            color: var(--text-light);
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        .tabs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .tab-info {
+            border-left: 4px solid var(--primary);
+            padding-left: 1.5rem;
+            padding: 1.5rem;
+            padding-left: 1.5rem;
+            background: var(--bg-light);
+            border-radius: 0.5rem;
+        }
+
+        .tab-info h3 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .tab-info p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .tab-info ul {
+            margin-left: 1.5rem;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .tab-info li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Stats Section */
+        .stats-section {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 3rem 2rem;
+            color: white;
+        }
+
+        .stats-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            text-align: center;
+        }
+
+        .stat-item h3 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-item p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--text);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            transition: opacity 0.3s;
+        }
+
+        .footer-links a:hover {
+            opacity: 0.8;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 1.5rem;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .nav-links {
+                gap: 1rem;
+                font-size: 0.9rem;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Code highlight */
+        code {
+            background: var(--bg-light);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: var(--text);
+            color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: white;
+        }
+
+        /* Documentation Section */
+        .docs-section {
+            background: var(--bg-light);
+            padding: 4rem 2rem;
+        }
+
+        .docs-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .docs-content h2 {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .doc-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .doc-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-5px);
+        }
+
+        .doc-card h3 {
+            color: var(--primary);
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+
+        .doc-card p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            flex-grow: 1;
+            margin-bottom: 1rem;
+        }
+
+        .doc-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .doc-link:hover {
+            color: var(--primary-dark);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <header>
+        <nav>
+            <div class="logo">⚡ Token Pulse</div>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#tabs">Dashboard</a></li>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="README.md" class="btn-github">Documentation</a></li>
+                <li><a href="https://github.com/salayhin/token-pulse" class="btn-github">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>Token Pulse</h1>
+        <p>A personal-use local dashboard and CLI for monitoring Claude Code token usage, costs, and cache savings</p>
+        <div class="cta-buttons">
+            <a href="README.md" class="btn btn-primary">📖 Full Documentation</a>
+            <a href="docs/FEATURES.md" class="btn btn-secondary">✨ View All Features</a>
+            <a href="https://github.com/salayhin/token-pulse" class="btn btn-secondary">⭐ GitHub Repository</a>
+        </div>
+    </section>
+
+    <!-- Quick Stats -->
+    <section class="stats-section">
+        <div class="stats-content">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h3>100%</h3>
+                    <p>Local • Private</p>
+                </div>
+                <div class="stat-item">
+                    <h3>∞</h3>
+                    <p>Sessions Tracked</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+        <h2>Key Features</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Real-time Dashboard</h3>
+                <p>Live token usage, cost, and cache statistics with Server-Sent Events streaming</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3>Session Explorer</h3>
+                <p>Browse all Claude Code sessions with full message threads and token breakdowns</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💰</div>
+                <h3>Cost Tracking</h3>
+                <p>Monitor spending against daily and monthly budgets with automatic alerts</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚙️</div>
+                <h3>Live Settings</h3>
+                <p>Edit pricing, timezone, and budget without restarting the server</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📈</div>
+                <h3>Cache Analytics</h3>
+                <p>Track cache hit rates, savings, and detailed cost breakdowns</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📤</div>
+                <h3>Data Export</h3>
+                <p>Export stats as CSV or JSON for further analysis and reporting</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dashboard Features -->
+    <section class="tabs-section" id="tabs">
+        <div class="tabs-content">
+            <h2>Dashboard Features</h2>
+            <p>Six powerful sections for monitoring and managing your Claude Code usage:</p>
+
+            <div class="tabs-grid">
+                <div class="tab-info">
+                    <h3>📊 Overview</h3>
+                    <p>Real-time metrics with:</p>
+                    <ul>
+                        <li>Today vs. all-time costs</li>
+                        <li>Token breakdown (input/output/cache)</li>
+                        <li>30-day trend chart</li>
+                        <li>Monthly projections</li>
+                    </ul>
+                </div>
+
+                <div class="tab-info">
+                    <h3>🗂️ Projects</h3>
+                    <p>Browse all projects:</p>
+                    <ul>
+                        <li>Sessions per project</li>
+                        <li>Total tokens used</li>
+                        <li>Cost per project</li>
+                        <li>Quick filtering</li>
+                    </ul>
+                </div>
+
+                <div class="tab-info">
+                    <h3>📝 Sessions</h3>
+                    <p>Full session details:</p>
+                    <ul>
+                        <li>Message threads</li>
+                        <li>Date filtering</li>
+                        <li>Full-text search</li>
+                        <li>Per-session costs</li>
+                    </ul>
+                </div>
+
+                <div class="tab-info">
+                    <h3>💰 Budget</h3>
+                    <p>Subscription & spending:</p>
+                    <ul>
+                        <li>Plan selection</li>
+                        <li>Budget limits</li>
+                        <li>Pricing editor</li>
+                        <li>Cost tracking</li>
+                    </ul>
+                </div>
+
+                <div class="tab-info">
+                    <h3>⭐ Data Management</h3>
+                    <p>Rebuild & history:</p>
+                    <ul>
+                        <li>One-click rebuild</li>
+                        <li>Real-time progress</li>
+                        <li>Rebuild history table</li>
+                        <li>Statistics tracking</li>
+                    </ul>
+                </div>
+
+                <div class="tab-info">
+                    <h3>⚙️ Settings</h3>
+                    <p>Configuration control:</p>
+                    <ul>
+                        <li>Timezone selection</li>
+                        <li>Model pricing</li>
+                        <li>Live updates</li>
+                        <li>No restart needed</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section class="features" id="quick-start" style="background: white; border-top: 1px solid var(--border);">
+        <h2>Quick Start</h2>
+        <div style="max-width: 800px; margin: 0 auto; background: var(--bg-light); padding: 2rem; border-radius: 0.75rem;">
+            <pre><code>
+# Build the binary
+make build
+
+# Index all existing sessions
+./bin/tokenpulse index
+
+# Start the dashboard
+./bin/tokenpulse serve
+
+# Open http://127.0.0.1:3456 in your browser
+            </code></pre>
+            <p style="color: var(--text-light); text-align: center; margin-top: 1rem;">
+                For detailed setup instructions, see <a href="README.md" style="color: var(--primary);">README.md</a>
+            </p>
+        </div>
+    </section>
+
+    <!-- Documentation -->
+    <section class="docs-section" id="documentation">
+        <div class="docs-content">
+            <h2>Full Documentation</h2>
+            <div class="docs-grid">
+                <a href="README.md" class="doc-card">
+                    <h3>📖 Complete Guide</h3>
+                    <p>Comprehensive overview covering quick start, features, system architecture, configuration, CLI commands, API endpoints, and more.</p>
+                    <span class="doc-link">Read Guide →</span>
+                </a>
+
+                <a href="docs/FEATURES.md" class="doc-card">
+                    <h3>✨ Features Breakdown</h3>
+                    <p>Detailed guide to each dashboard tab including Overview, Projects, Sessions, Budget, Data Management, and Settings with all capabilities.</p>
+                    <span class="doc-link">View Features →</span>
+                </a>
+
+                <a href="CONTRIBUTING.md" class="doc-card">
+                    <h3>🤝 Contributing</h3>
+                    <p>Developer guide with setup instructions, workflow, code style guide, testing requirements, pull request process, and best practices.</p>
+                    <span class="doc-link">Contribute →</span>
+                </a>
+
+                <a href="https://github.com/salayhin/token-pulse" class="doc-card">
+                    <h3>⭐ GitHub Repository</h3>
+                    <p>Source code, issue tracking, releases, and project management. Fork, star, and contribute to Token Pulse development.</p>
+                    <span class="doc-link">Visit GitHub →</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="README.md">Documentation</a>
+                <a href="docs/FEATURES.md">Features Guide</a>
+                <a href="CONTRIBUTING.md">Contributing</a>
+                <a href="https://github.com/salayhin/token-pulse">GitHub</a>
+            </div>
+            <div class="footer-bottom">
+                <p>Made with ❤️ for Claude Code users tracking their token usage locally</p>
+                <p style="margin-top: 0.5rem;">Personal use only • Server binds to 127.0.0.1 • All data is local</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

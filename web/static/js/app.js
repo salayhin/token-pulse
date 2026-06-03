@@ -1385,3 +1385,33 @@ async function saveSettings(patch, statusId) {
     if (statusEl) statusEl.textContent = 'Error: ' + err.message;
   }
 }
+
+// Export data functionality
+(() => {
+  const exportCsvBtn = document.getElementById('export-csv-btn');
+  const exportJsonBtn = document.getElementById('export-json-btn');
+
+  if (!exportCsvBtn || !exportJsonBtn) return;
+
+  async function triggerExport(format) {
+    try {
+      const resp = await fetch(`/api/v1/export?format=${format}&scope=daily`);
+      if (!resp.ok) throw new Error(await resp.text());
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `token-pulse-export-${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Export failed: ${err.message}`);
+    }
+  }
+
+  exportCsvBtn.addEventListener('click', () => triggerExport('csv'));
+  exportJsonBtn.addEventListener('click', () => triggerExport('json'));
+})();
