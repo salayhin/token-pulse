@@ -255,7 +255,7 @@
 
         .tabs-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
         }
 
@@ -389,6 +389,12 @@
         }
 
         /* Responsive */
+        @media (max-width: 1024px) {
+            .tabs-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 2rem;
@@ -408,6 +414,10 @@
             }
 
             .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs-grid {
                 grid-template-columns: 1fr;
             }
         }
