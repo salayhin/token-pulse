@@ -55,6 +55,13 @@
             font-size: 1.5rem;
             font-weight: 700;
             color: var(--primary);
+            text-decoration: none;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        .logo:hover {
+            opacity: 0.8;
         }
 
         .nav-links {
@@ -416,13 +423,11 @@
     <!-- Navigation -->
     <header>
         <nav>
-            <div class="logo">⚡ Token Pulse</div>
+            <a href="#" class="logo">⚡ Token Pulse</a>
             <ul class="nav-links">
                 <li><a href="#features">Features</a></li>
                 <li><a href="#tabs">Dashboard</a></li>
                 <li><a href="#quick-start">Quick Start</a></li>
-                <li><a href="README.md" class="btn-github">Documentation</a></li>
-                <li><a href="https://github.com/salayhin/token-pulse" class="btn-github">GitHub</a></li>
             </ul>
         </nav>
     </header>
