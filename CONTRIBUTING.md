@@ -25,15 +25,42 @@ cd token-pulse
 
 # Install dependencies
 go mod download
+```
 
+### Running Token Pulse
+
+**Quick way (one-liner):**
+```bash
+./build-and-run.sh
+# Opens http://127.0.0.1:3456 automatically
+```
+
+**Manual steps:**
+```bash
 # Build the binary
 make build
 
 # Run tests
 make test
 
-# Run the dashboard
-make run
+# Start the dashboard (with auto-indexing)
+./bin/tokenpulse serve
+# Opens http://127.0.0.1:3456 in your browser
+```
+
+**Other useful commands:**
+```bash
+# One-time index of all existing sessions
+./bin/tokenpulse index
+
+# View stats in the terminal
+./bin/tokenpulse stats --today
+
+# Run linter
+make lint
+
+# Run full test suite
+make test
 ```
 
 ## Development Workflow

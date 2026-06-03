@@ -10,6 +10,21 @@ Token Pulse is a Go application that monitors your Claude Code sessions locally.
 
 ## 🚀 Quick Start
 
+### Option 1: One-line startup (recommended)
+
+```bash
+./build-and-run.sh
+# Opens http://127.0.0.1:3456 automatically
+```
+
+The script:
+- Kills any existing process on port 3456
+- Builds the binary
+- Indexes all existing sessions
+- Starts the dashboard server
+
+### Option 2: Manual steps
+
 ```bash
 # Build the binary
 make build
@@ -20,7 +35,7 @@ make build
 # View stats in the terminal
 ./bin/tokenpulse stats --today
 
-# Start the dashboard
+# Start the dashboard server
 ./bin/tokenpulse serve
 # Open http://127.0.0.1:3456 in your browser
 ```
