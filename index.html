@@ -568,8 +568,17 @@
     <!-- Quick Start -->
     <section class="features" id="quick-start" style="background: white; border-top: 1px solid var(--border);">
         <h2>Quick Start</h2>
-        <div style="max-width: 800px; margin: 0 auto; background: var(--bg-light); padding: 2rem; border-radius: 0.75rem;">
-            <pre><code>
+        <div style="max-width: 800px; margin: 0 auto;">
+            <div style="background: var(--bg-light); padding: 2rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+                <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.95rem;"><strong>Option 1: One-line startup (recommended)</strong></p>
+                <pre><code>./build-and-run.sh
+
+# Open http://127.0.0.1:3456 in your browser
+                </code></pre>
+            </div>
+            <div style="background: var(--bg-light); padding: 2rem; border-radius: 0.75rem;">
+                <p style="color: var(--text-light); margin-bottom: 1rem; font-size: 0.95rem;"><strong>Option 2: Manual steps</strong></p>
+                <pre><code>
 # Build the binary
 make build
 
@@ -580,8 +589,9 @@ make build
 ./bin/tokenpulse serve
 
 # Open http://127.0.0.1:3456 in your browser
-            </code></pre>
-            <p style="color: var(--text-light); text-align: center; margin-top: 1rem;">
+                </code></pre>
+            </div>
+            <p style="color: var(--text-light); text-align: center; margin-top: 1.5rem;">
                 For detailed setup instructions, see <a href="README.md" style="color: var(--primary);">README.md</a>
             </p>
         </div>
