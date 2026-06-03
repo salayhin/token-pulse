@@ -1096,16 +1096,31 @@ function renderLastRebuildStats(stats) {
     return;
   }
 
-  const ts = new Date(stats.completed_at);
-  document.getElementById('dm-status-value').textContent = stats.error ? 'Failed' : 'Success';
-  document.getElementById('dm-completed-value').textContent =
-    ts.toLocaleString(undefined, {year: 'numeric', month: '2-digit', day: '2-digit',
-                                   hour: '2-digit', minute: '2-digit', second: '2-digit'});
-  document.getElementById('dm-scanned-value').textContent = stats.files_scanned || '—';
-  document.getElementById('dm-indexed-value').textContent = stats.files_indexed || '—';
-  document.getElementById('dm-skipped-value').textContent = stats.files_skipped || '—';
-  document.getElementById('dm-messages-value').textContent = stats.messages_added || '—';
-  document.getElementById('dm-tools-value').textContent = stats.tool_calls_added || '—';
+  // Parse timestamp - handle both ISO format and millisecond timestamps
+  let ts;
+  if (stats.completed_at) {
+    ts = new Date(stats.completed_at);
+  }
+
+  const statusEl = document.getElementById('dm-status-value');
+  const completedEl = document.getElementById('dm-completed-value');
+
+  statusEl.textContent = stats.error ? 'Failed' : 'Success';
+
+  if (ts && !isNaN(ts.getTime())) {
+    completedEl.textContent = ts.toLocaleString(undefined, {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  } else {
+    completedEl.textContent = '—';
+  }
+
+  document.getElementById('dm-scanned-value').textContent = stats.files_scanned ? String(stats.files_scanned) : '—';
+  document.getElementById('dm-indexed-value').textContent = stats.files_indexed ? String(stats.files_indexed) : '—';
+  document.getElementById('dm-skipped-value').textContent = stats.files_skipped ? String(stats.files_skipped) : '—';
+  document.getElementById('dm-messages-value').textContent = stats.messages_added ? String(stats.messages_added) : '—';
+  document.getElementById('dm-tools-value').textContent = stats.tool_calls_added ? String(stats.tool_calls_added) : '—';
   document.getElementById('dm-duration-value').textContent = stats.duration || '—';
 }
 
@@ -1164,8 +1179,8 @@ function renderLastRebuildStats(stats) {
     rebuildProgress.style.borderLeftColor = 'var(--accent-2)';
     rebuildBtn.disabled = false;
 
-    // Update stats table
-    renderLastRebuildStats(data);
+    // Fetch fresh stats from server and update table
+    loadDataManagement().catch(() => {});
 
     // Auto-refresh all dashboard data
     setTimeout(() => {

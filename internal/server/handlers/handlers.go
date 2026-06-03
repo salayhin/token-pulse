@@ -354,7 +354,7 @@ func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
 			"messages_added":   stats.MessagesAdded,
 			"tool_calls_added": stats.ToolCallsAdded,
 			"duration":         stats.Duration.String(),
-			"ts":               time.Now().Format(time.RFC3339),
+			"completed_at":     completedAt.Format(time.RFC3339),
 		})
 	}()
 
