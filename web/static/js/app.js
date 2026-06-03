@@ -1084,44 +1084,48 @@ async function loadDataManagement() {
     const resp = await fetch('/api/v1/rebuild');
     if (!resp.ok) throw new Error('Failed to load rebuild status');
     const data = await resp.json();
-    renderLastRebuildStats(data.last_rebuild);
+    renderRebuildHistory(data.history);
   } catch (err) {
     console.error('Error loading data management:', err);
   }
 }
 
-function renderLastRebuildStats(stats) {
-  if (!stats) {
-    document.getElementById('dm-status-value').textContent = 'No rebuild yet';
+function renderRebuildHistory(history) {
+  const tbody = document.getElementById('dm-rebuild-tbody');
+
+  if (!history || history.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding: 16px; text-align: center; color: var(--muted);">No rebuilds yet</td></tr>';
     return;
   }
 
-  // Parse timestamp - handle both ISO format and millisecond timestamps
-  let ts;
-  if (stats.completed_at) {
-    ts = new Date(stats.completed_at);
-  }
+  tbody.innerHTML = history.map((stats) => {
+    const statusText = stats.error ? 'Failed' : 'Success';
+    const statusColor = stats.error ? 'var(--warn)' : 'var(--success, #4caf50)';
 
-  const statusEl = document.getElementById('dm-status-value');
-  const completedEl = document.getElementById('dm-completed-value');
+    let completedStr = '—';
+    if (stats.completed_at) {
+      const ts = new Date(stats.completed_at);
+      if (!isNaN(ts.getTime())) {
+        completedStr = ts.toLocaleString(undefined, {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+      }
+    }
 
-  statusEl.textContent = stats.error ? 'Failed' : 'Success';
-
-  if (ts && !isNaN(ts.getTime())) {
-    completedEl.textContent = ts.toLocaleString(undefined, {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-  } else {
-    completedEl.textContent = '—';
-  }
-
-  document.getElementById('dm-scanned-value').textContent = stats.files_scanned ? String(stats.files_scanned) : '—';
-  document.getElementById('dm-indexed-value').textContent = stats.files_indexed ? String(stats.files_indexed) : '—';
-  document.getElementById('dm-skipped-value').textContent = stats.files_skipped ? String(stats.files_skipped) : '—';
-  document.getElementById('dm-messages-value').textContent = stats.messages_added ? String(stats.messages_added) : '—';
-  document.getElementById('dm-tools-value').textContent = stats.tool_calls_added ? String(stats.tool_calls_added) : '—';
-  document.getElementById('dm-duration-value').textContent = stats.duration || '—';
+    return `
+      <tr style="border-bottom: 1px solid var(--border); hover: {background: var(--panel)};">
+        <td style="padding: 8px; color: ${statusColor}; font-weight: 500;">${statusText}</td>
+        <td style="padding: 8px; font-size: 12px; color: var(--muted);">${completedStr}</td>
+        <td style="padding: 8px; text-align: right;">${stats.files_scanned || 0}</td>
+        <td style="padding: 8px; text-align: right;">${stats.files_indexed || 0}</td>
+        <td style="padding: 8px; text-align: right;">${stats.files_skipped || 0}</td>
+        <td style="padding: 8px; text-align: right;">${stats.messages_added || 0}</td>
+        <td style="padding: 8px; text-align: right;">${stats.tool_calls_added || 0}</td>
+        <td style="padding: 8px; text-align: right; font-size: 12px;">${stats.duration || '—'}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // Rebuild index handler (Data Management tab)
@@ -1179,8 +1183,38 @@ function renderLastRebuildStats(stats) {
     rebuildProgress.style.borderLeftColor = 'var(--accent-2)';
     rebuildBtn.disabled = false;
 
-    // Fetch fresh stats from server and update table
-    loadDataManagement().catch(() => {});
+    // Add new row to rebuild history table immediately
+    const tbody = document.getElementById('dm-rebuild-tbody');
+    if (tbody) {
+      // Remove "No rebuilds yet" message if present
+      if (tbody.children.length === 1 && tbody.children[0].textContent.includes('No rebuilds yet')) {
+        tbody.innerHTML = '';
+      }
+
+      const completedStr = new Date(data.completed_at).toLocaleString(undefined, {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+
+      const newRow = `
+        <tr style="border-bottom: 1px solid var(--border);">
+          <td style="padding: 8px; color: var(--success, #4caf50); font-weight: 500;">Success</td>
+          <td style="padding: 8px; font-size: 12px; color: var(--muted);">${completedStr}</td>
+          <td style="padding: 8px; text-align: right;">${data.files_scanned || 0}</td>
+          <td style="padding: 8px; text-align: right;">${data.files_indexed || 0}</td>
+          <td style="padding: 8px; text-align: right;">${data.files_skipped || 0}</td>
+          <td style="padding: 8px; text-align: right;">${data.messages_added || 0}</td>
+          <td style="padding: 8px; text-align: right;">${data.tool_calls_added || 0}</td>
+          <td style="padding: 8px; text-align: right; font-size: 12px;">${data.duration || '—'}</td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML('afterbegin', newRow);
+
+      // Keep only last 10 rows
+      while (tbody.children.length > 10) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    }
 
     // Auto-refresh all dashboard data
     setTimeout(() => {

@@ -37,13 +37,13 @@ type RebuildStats struct {
 }
 
 type Handlers struct {
-	eng             *analytics.Engine
-	bus             *EventBus
-	health          HealthInfo
-	idx             *indexer.Indexer
-	mu              sync.Mutex        // Serialize rebuilds
-	lastRebuild     *RebuildStats     // Store last rebuild stats
-	lastRebuildMu   sync.RWMutex      // Separate mutex for stats read/write
+	eng              *analytics.Engine
+	bus              *EventBus
+	health           HealthInfo
+	idx              *indexer.Indexer
+	mu               sync.Mutex        // Serialize rebuilds
+	rebuildHistory   []*RebuildStats   // Store rebuild history (keep last 10)
+	rebuildHistoryMu sync.RWMutex      // Separate mutex for history read/write
 }
 
 func New(eng *analytics.Engine, bus *EventBus, health HealthInfo, idx *indexer.Indexer) *Handlers {
@@ -316,14 +316,18 @@ func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
 		stats, err := h.idx.Run(ctx, true) // force=true for full rebuild
 
 		if err != nil {
-			// Store error stats
-			h.lastRebuildMu.Lock()
-			h.lastRebuild = &RebuildStats{
+			// Store error stats in history
+			errorStats := &RebuildStats{
 				StartedAt:   time.Now(),
 				CompletedAt: time.Now(),
 				Error:       err.Error(),
 			}
-			h.lastRebuildMu.Unlock()
+			h.rebuildHistoryMu.Lock()
+			h.rebuildHistory = append([]*RebuildStats{errorStats}, h.rebuildHistory...)
+			if len(h.rebuildHistory) > 10 {
+				h.rebuildHistory = h.rebuildHistory[:10]
+			}
+			h.rebuildHistoryMu.Unlock()
 
 			h.bus.Publish("rebuild_error", map[string]any{
 				"error": err.Error(),
@@ -331,10 +335,9 @@ func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Store stats for later retrieval
+		// Store stats for later retrieval (keep history of last 10 rebuilds)
 		completedAt := time.Now()
-		h.lastRebuildMu.Lock()
-		h.lastRebuild = &RebuildStats{
+		newStats := &RebuildStats{
 			StartedAt:      completedAt.Add(-stats.Duration),
 			CompletedAt:    completedAt,
 			FilesScanned:   stats.FilesScanned,
@@ -344,7 +347,12 @@ func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
 			ToolCallsAdded: stats.ToolCallsAdded,
 			Duration:       stats.Duration.String(),
 		}
-		h.lastRebuildMu.Unlock()
+		h.rebuildHistoryMu.Lock()
+		h.rebuildHistory = append([]*RebuildStats{newStats}, h.rebuildHistory...)
+		if len(h.rebuildHistory) > 10 {
+			h.rebuildHistory = h.rebuildHistory[:10]
+		}
+		h.rebuildHistoryMu.Unlock()
 
 		// Publish completion with stats
 		h.bus.Publish("rebuild_complete", map[string]any{
@@ -366,19 +374,19 @@ func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) RebuildStatus(w http.ResponseWriter, r *http.Request) {
-	h.lastRebuildMu.RLock()
-	defer h.lastRebuildMu.RUnlock()
+	h.rebuildHistoryMu.RLock()
+	defer h.rebuildHistoryMu.RUnlock()
 
-	if h.lastRebuild == nil {
+	if len(h.rebuildHistory) == 0 {
 		writeJSON(w, map[string]any{
-			"last_rebuild": nil,
-			"message":      "No rebuild has been run yet",
+			"history": []*RebuildStats{},
+			"message": "No rebuild has been run yet",
 		})
 		return
 	}
 
 	writeJSON(w, map[string]any{
-		"last_rebuild": h.lastRebuild,
+		"history": h.rebuildHistory,
 	})
 }
 
