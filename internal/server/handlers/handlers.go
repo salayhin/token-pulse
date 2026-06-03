@@ -1,15 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/sirajus-salayhin/tokenpulse/internal/analytics"
+	"github.com/sirajus-salayhin/tokenpulse/internal/indexer"
 )
 
 // HealthInfo bundles optional runtime introspection sources surfaced on the
@@ -21,14 +24,30 @@ type HealthInfo struct {
 	SlowWrites func() int64
 }
 
-type Handlers struct {
-	eng    *analytics.Engine
-	bus    *EventBus
-	health HealthInfo
+type RebuildStats struct {
+	StartedAt      time.Time `json:"started_at"`
+	CompletedAt    time.Time `json:"completed_at"`
+	FilesScanned   int       `json:"files_scanned"`
+	FilesIndexed   int       `json:"files_indexed"`
+	FilesSkipped   int       `json:"files_skipped"`
+	MessagesAdded  int       `json:"messages_added"`
+	ToolCallsAdded int       `json:"tool_calls_added"`
+	Duration       string    `json:"duration"`
+	Error          string    `json:"error,omitempty"`
 }
 
-func New(eng *analytics.Engine, bus *EventBus, health HealthInfo) *Handlers {
-	return &Handlers{eng: eng, bus: bus, health: health}
+type Handlers struct {
+	eng             *analytics.Engine
+	bus             *EventBus
+	health          HealthInfo
+	idx             *indexer.Indexer
+	mu              sync.Mutex        // Serialize rebuilds
+	lastRebuild     *RebuildStats     // Store last rebuild stats
+	lastRebuildMu   sync.RWMutex      // Separate mutex for stats read/write
+}
+
+func New(eng *analytics.Engine, bus *EventBus, health HealthInfo, idx *indexer.Indexer) *Handlers {
+	return &Handlers{eng: eng, bus: bus, health: health, idx: idx}
 }
 
 func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
@@ -274,6 +293,93 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func (h *Handlers) Rebuild(w http.ResponseWriter, r *http.Request) {
+	// Acquire lock to prevent concurrent rebuilds
+	if !h.mu.TryLock() {
+		writeErr(w, http.StatusConflict, "rebuild already in progress")
+		return
+	}
+	defer h.mu.Unlock()
+
+	// Publish SSE event: rebuild starting
+	h.bus.Publish("rebuild_start", map[string]any{
+		"ts": time.Now().Format(time.RFC3339),
+	})
+
+	// Run full rebuild in background goroutine
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		stats, err := h.idx.Run(ctx, true) // force=true for full rebuild
+
+		if err != nil {
+			// Store error stats
+			h.lastRebuildMu.Lock()
+			h.lastRebuild = &RebuildStats{
+				StartedAt:   time.Now(),
+				CompletedAt: time.Now(),
+				Error:       err.Error(),
+			}
+			h.lastRebuildMu.Unlock()
+
+			h.bus.Publish("rebuild_error", map[string]any{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		// Store stats for later retrieval
+		completedAt := time.Now()
+		h.lastRebuildMu.Lock()
+		h.lastRebuild = &RebuildStats{
+			StartedAt:      completedAt.Add(-stats.Duration),
+			CompletedAt:    completedAt,
+			FilesScanned:   stats.FilesScanned,
+			FilesIndexed:   stats.FilesIndexed,
+			FilesSkipped:   stats.FilesSkipped,
+			MessagesAdded:  stats.MessagesAdded,
+			ToolCallsAdded: stats.ToolCallsAdded,
+			Duration:       stats.Duration.String(),
+		}
+		h.lastRebuildMu.Unlock()
+
+		// Publish completion with stats
+		h.bus.Publish("rebuild_complete", map[string]any{
+			"files_scanned":    stats.FilesScanned,
+			"files_indexed":    stats.FilesIndexed,
+			"files_skipped":    stats.FilesSkipped,
+			"messages_added":   stats.MessagesAdded,
+			"tool_calls_added": stats.ToolCallsAdded,
+			"duration":         stats.Duration.String(),
+			"ts":               time.Now().Format(time.RFC3339),
+		})
+	}()
+
+	// Return immediate response with status
+	writeJSON(w, map[string]any{
+		"status":  "rebuilding",
+		"message": "Index rebuild started. Check SSE events for progress.",
+	})
+}
+
+func (h *Handlers) RebuildStatus(w http.ResponseWriter, r *http.Request) {
+	h.lastRebuildMu.RLock()
+	defer h.lastRebuildMu.RUnlock()
+
+	if h.lastRebuild == nil {
+		writeJSON(w, map[string]any{
+			"last_rebuild": nil,
+			"message":      "No rebuild has been run yet",
+		})
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"last_rebuild": h.lastRebuild,
+	})
 }
 
 // Helpers ---------------------------------------------------------------

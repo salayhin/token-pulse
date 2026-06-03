@@ -22,18 +22,19 @@ type Config struct {
 
 // SubscriptionConfig describes how the user actually pays Anthropic. The
 // per-token dollar amounts computed elsewhere in the app are *API rates*; if
-// the user is on a flat-fee plan (Pro, Max, Team), those dollars represent
-// "API-equivalent value" rather than real money out of pocket. The UI uses
-// this struct to relabel cost figures and show a subscription-value card.
+// the user is on a subscription plan (Pro, Max, Team, Enterprise, etc.), those
+// dollars represent "API-equivalent value" rather than real money out of pocket.
+// The UI uses this struct to relabel cost figures and show a subscription-value card.
 //
 // Plan values:
 //
-//	"api"     — pay-as-you-go API, dollars are real spend (default)
-//	"pro"     — Claude Pro subscription (~$20/mo)
-//	"max_5x"  — Claude Max 5× (~$100/mo)
-//	"max_20x" — Claude Max 20× (~$200/mo)
-//	"team"    — Claude Team (per seat)
-//	"custom"  — user-defined flat fee
+//	"api"        — pay-as-you-go API, dollars are real spend (default)
+//	"pro"        — Claude Pro subscription (~$20/mo, flat-fee)
+//	"max_5x"     — Claude Max 5× (~$100/mo, flat-fee)
+//	"max_20x"    — Claude Max 20× (~$200/mo, flat-fee)
+//	"team"       — Claude Team (per-seat subscription)
+//	"enterprise" — Claude Enterprise (seat price + usage at API rates)
+//	"custom"     — user-defined fee (flat or variable)
 type SubscriptionConfig struct {
 	Plan          string  `mapstructure:"plan"            yaml:"plan"            json:"plan"`             // see comment above
 	MonthlyFeeUSD float64 `mapstructure:"monthly_fee_usd" yaml:"monthly_fee_usd" json:"monthly_fee_usd"` // 0 = unset/API
@@ -50,6 +51,8 @@ func (s SubscriptionConfig) PlanLabel() string {
 		return "Max 20×"
 	case "team":
 		return "Team"
+	case "enterprise":
+		return "Enterprise"
 	case "custom":
 		return "Custom"
 	default:
@@ -62,7 +65,7 @@ func (s SubscriptionConfig) PlanLabel() string {
 // relabel "Cost" → "API value" and surface the subscription savings card.
 func (s SubscriptionConfig) IsSubscription() bool {
 	switch s.Plan {
-	case "pro", "max_5x", "max_20x", "team", "custom":
+	case "pro", "max_5x", "max_20x", "team", "enterprise", "custom":
 		return true
 	default:
 		return false

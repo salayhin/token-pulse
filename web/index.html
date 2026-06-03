@@ -14,6 +14,7 @@
       <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="sessions">Sessions</button>
       <button class="tab" data-tab="budget">Budget</button>
+      <button class="tab" data-tab="data-management">Data Management</button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
     <div class="toolbar">
@@ -263,10 +264,11 @@
 
       <h2 style="margin-top:24px">Subscription</h2>
       <p class="muted">
-        Tell Token Pulse how you actually pay Anthropic. On a flat-fee plan
-        (Pro, Max, Team) the dollar values shown across the dashboard are
+        Tell Token Pulse how you actually pay Anthropic. On subscription plans
+        (Pro, Max, Team, Enterprise) the dollar values shown across the dashboard are
         <em>API-equivalent</em> — what the same usage would cost at API rates —
-        and the labels switch to "API value" so it's clear.
+        and the labels switch to "API value" so it's clear. Enterprise includes a base
+        seat price plus usage charges at API rates.
       </p>
       <div class="settings-row">
         <label for="settings-plan">Plan</label>
@@ -276,6 +278,7 @@
           <option value="max_5x">Max 5× (~$100/mo)</option>
           <option value="max_20x">Max 20× (~$200/mo)</option>
           <option value="team">Team (per seat)</option>
+          <option value="enterprise">Enterprise</option>
           <option value="custom">Custom</option>
         </select>
         <span id="settings-plan-status" class="muted"></span>
@@ -361,6 +364,76 @@
       </div>
 
     </form>
+  </section>
+
+  <!-- Data Management tab -->
+  <section class="view hidden" id="view-data-management">
+    <h2>Data Management</h2>
+    <p class="muted">
+      Re-import all Claude Code session data from your local files. Use this when
+      you've updated pricing rates and need to recalculate all costs, or if your
+      database is out of sync with your source data.
+    </p>
+
+    <!-- Rebuild Button & Progress -->
+    <div class="settings-row">
+      <button id="dm-rebuild-btn" class="btn" type="button" style="background: var(--accent); color: #fff;">
+        Rebuild Index
+      </button>
+      <span id="dm-rebuild-status" class="muted"></span>
+    </div>
+
+    <!-- Progress Indicator -->
+    <div id="dm-rebuild-progress" class="hidden" style="margin-top: 12px; padding: 12px; background: var(--panel); border-radius: 6px; border-left: 3px solid var(--accent);">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite;"></span>
+        <span id="dm-rebuild-message">Starting rebuild...</span>
+      </div>
+      <div id="dm-rebuild-stats" style="font-size: 12px; color: var(--muted);"></div>
+    </div>
+
+    <!-- Last Rebuild Stats Table -->
+    <h2 style="margin-top: 24px">Last Rebuild</h2>
+    <table id="dm-last-rebuild-table" style="width: 100%; margin-bottom: 16px;">
+      <tr>
+        <td><strong>Status</strong></td>
+        <td id="dm-status-value">No rebuild yet</td>
+      </tr>
+      <tr>
+        <td><strong>Completed</strong></td>
+        <td id="dm-completed-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Files Scanned</strong></td>
+        <td id="dm-scanned-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Files Indexed</strong></td>
+        <td id="dm-indexed-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Files Skipped</strong></td>
+        <td id="dm-skipped-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Messages Added</strong></td>
+        <td id="dm-messages-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Tool Calls Added</strong></td>
+        <td id="dm-tools-value">—</td>
+      </tr>
+      <tr>
+        <td><strong>Duration</strong></td>
+        <td id="dm-duration-value">—</td>
+      </tr>
+    </table>
+
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </section>
 
   <script src="/static/js/chart.umd.min.js"></script>

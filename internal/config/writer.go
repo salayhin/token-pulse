@@ -72,7 +72,7 @@ func ValidateSettingsPatch(p SettingsPatch) error {
 	}
 	if p.Subscription != nil {
 		if !validPlans[p.Subscription.Plan] {
-			return fmt.Errorf("subscription.plan must be one of api, pro, max_5x, max_20x, team, custom (got %q)", p.Subscription.Plan)
+			return fmt.Errorf("subscription.plan must be one of api, pro, max_5x, max_20x, team, enterprise, custom (got %q)", p.Subscription.Plan)
 		}
 		v := p.Subscription.MonthlyFeeUSD
 		if math.IsNaN(v) || math.IsInf(v, 0) {
@@ -90,7 +90,7 @@ func ValidateSettingsPatch(p SettingsPatch) error {
 // SubscriptionConfig.PlanLabel honest about the universe of inputs.
 var validPlans = map[string]bool{
 	"api": true, "pro": true, "max_5x": true, "max_20x": true,
-	"team": true, "custom": true,
+	"team": true, "enterprise": true, "custom": true,
 }
 
 func validatePricing(p ModelPricing, label string) error {

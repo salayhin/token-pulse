@@ -14,6 +14,7 @@ import (
 
 	"github.com/sirajus-salayhin/tokenpulse/internal/analytics"
 	"github.com/sirajus-salayhin/tokenpulse/internal/config"
+	"github.com/sirajus-salayhin/tokenpulse/internal/indexer"
 	"github.com/sirajus-salayhin/tokenpulse/internal/server/handlers"
 	"github.com/sirajus-salayhin/tokenpulse/web"
 )
@@ -24,18 +25,19 @@ type Server struct {
 	log      *slog.Logger
 	eng      *analytics.Engine
 	bus      *handlers.EventBus
+	idx      *indexer.Indexer
 	srv      *http.Server
 }
 
-func New(provider *config.Provider, configPath string, eng *analytics.Engine, bus *handlers.EventBus, health handlers.HealthInfo, log *slog.Logger) *Server {
+func New(provider *config.Provider, configPath string, eng *analytics.Engine, bus *handlers.EventBus, health handlers.HealthInfo, log *slog.Logger, idx *indexer.Indexer) *Server {
 	cfg := provider.Get()
-	s := &Server{cfg: cfg, provider: provider, log: log, eng: eng, bus: bus}
+	s := &Server{cfg: cfg, provider: provider, log: log, eng: eng, bus: bus, idx: idx}
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(requestLog(log))
 	r.Use(middleware.Recoverer)
 
-	h := handlers.New(eng, bus, health)
+	h := handlers.New(eng, bus, health, idx)
 	sh := handlers.NewSettingsHandler(provider, configPath, eng)
 	r.Route("/api/v1", func(r chi.Router) {
 		// Bounded routes: a 15s per-request timeout cancels r.Context() if
@@ -60,6 +62,8 @@ func New(provider *config.Provider, configPath string, eng *analytics.Engine, bu
 			r.Get("/health", h.Health)
 			r.Get("/settings", sh.Get)
 			r.Put("/settings", sh.Put)
+			r.Get("/rebuild", h.RebuildStatus)
+			r.Post("/rebuild", h.Rebuild)
 		})
 		// Streaming routes must outlive the per-request timeout: SSE keeps
 		// connections open indefinitely; export streams large CSV/JSON.

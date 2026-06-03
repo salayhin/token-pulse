@@ -27,6 +27,34 @@ function tsInTz(isoStr, tzName) {
   }
 }
 
+// fmtTsInTz formats an ISO UTC timestamp as "YYYY-MM-DD HH:MM" in the given
+// IANA timezone. Falls back to the raw substring slice (UTC) only when
+// Intl.DateTimeFormat can't handle the input. Used everywhere a session
+// "Ended" / "Last active" / "Started" cell needs to render — replaces the
+// old shortTs which was UTC-only.
+function fmtTsInTz(isoStr, tzName) {
+  if (!isoStr) return '';
+  // SQLite-formatted timestamps come back as "2026-06-03 05:30:00.000" without
+  // a trailing Z. Date.parse treats that as local time, which is wrong; we
+  // need to tell the parser the value is UTC.
+  const normalized = isoStr.includes('T') ? isoStr : isoStr.replace(' ', 'T') + 'Z';
+  try {
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return (isoStr || '').slice(0, 16);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tzName || 'UTC',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(date);
+    const pick = (t) => (parts.find(p => p.type === t) || {}).value || '';
+    // en-CA gives ISO-style "YYYY-MM-DD" out of the date parts; assemble
+    // explicitly so we don't depend on the locale's separator.
+    return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}`;
+  } catch {
+    return (isoStr || '').slice(0, 16);
+  }
+}
+
 // fmtMtoks: render as Millions. 2 dp for ≥1M, 4 dp for <1M so small counts
 // (e.g. 5,000 → 0.0050M) stay legible instead of rounding to 0.00M.
 function fmtMtoks(n) {
@@ -228,6 +256,7 @@ function activateTab(name, opts = {}) {
   if (name === 'projects') loadProjects();
   if (name === 'sessions' && !opts.suppressLoad) loadSessions(true);
   if (name === 'budget') loadBudget();
+  if (name === 'data-management') loadDataManagement();
   if (name === 'settings') loadSettings();
   if (!opts.suppressHash) setHash(name);
 }
@@ -507,7 +536,7 @@ async function loadProjects() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${p.slug}</td><td>${fmtInt(p.sessions)}</td><td>${fmtInt(p.messages)}</td>
-      <td>${fmtInt(p.tool_calls)}</td><td>${fmtUSD(p.cost_usd)}</td><td>${shortTs(p.last_active)}</td>`;
+      <td>${fmtInt(p.tool_calls)}</td><td>${fmtUSD(p.cost_usd)}</td><td>${fmtTsInTz(p.last_active, currentTimezone)}</td>`;
     tr.addEventListener('click', () => setHash('project/' + p.slug));
     tbody.appendChild(tr);
   }
@@ -542,7 +571,7 @@ async function loadSessions(reset) {
       ? `<code>${escapeHtml(s.dominant_model)}</code>`
       : '<span class="muted">—</span>';
     tr.innerHTML = `
-      <td>${shortTs(s.ended_at)}</td><td>${titleCell}</td>
+      <td>${fmtTsInTz(s.ended_at, currentTimezone)}</td><td>${titleCell}</td>
       <td>${s.project_slug}</td>
       <td>${modelCell}</td>
       <td>${fmtInt(s.message_count)}</td><td>${fmtInt(s.tool_calls)}</td>
@@ -602,14 +631,14 @@ async function showSession(id, opts = {}) {
   document.getElementById('sd-meta').textContent =
     `${d.session.project_slug} · branch ${d.session.git_branch || '—'} · ` +
     `${d.session.message_count} messages · ${fmtUSD(d.session.cost_usd)} · ` +
-    `${shortTs(d.session.started_at)} → ${shortTs(d.session.ended_at)}${idSuffix}`;
+    `${fmtTsInTz(d.session.started_at, currentTimezone)} → ${fmtTsInTz(d.session.ended_at, currentTimezone)}${idSuffix}`;
 
   // Cards
   document.getElementById('sd-cost').textContent = fmtUSD(d.session.cost_usd);
   document.getElementById('sd-messages').textContent = fmtInt(d.session.message_count);
   document.getElementById('sd-tools-count').textContent = fmtInt(d.session.tool_calls);
-  document.getElementById('sd-started').textContent = shortTs(d.session.started_at) || '—';
-  document.getElementById('sd-ended').textContent = shortTs(d.session.ended_at) || '—';
+  document.getElementById('sd-started').textContent = fmtTsInTz(d.session.started_at, currentTimezone) || '—';
+  document.getElementById('sd-ended').textContent = fmtTsInTz(d.session.ended_at, currentTimezone) || '—';
   document.getElementById('sd-duration').textContent = humanDuration(d.session.started_at, d.session.ended_at);
   if (d.cache) {
     document.getElementById('sd-cache-rate').textContent = fmtPct(d.cache.hit_rate);
@@ -770,7 +799,7 @@ async function dispatchHash() {
     await runSearch(decodeURIComponent(arg), { suppressHash: true });
     return;
   }
-  if (['overview', 'projects', 'sessions', 'budget', 'settings', 'tools', 'search'].includes(head)) {
+  if (['overview', 'projects', 'sessions', 'budget', 'data-management', 'settings', 'tools', 'search'].includes(head)) {
     activateTab(head, { suppressHash: true });
     return;
   }
@@ -790,12 +819,23 @@ async function applyInitialPlanChrome() {
     const b = await getJSON('/api/v1/budget');
     const s = b.subscription || {};
     applyPlanChrome(s.plan, s.plan_label, s.monthly_fee_usd);
+    // Seed the global timezone early so any view rendered before
+    // loadOverview() finishes (e.g. a deep-link straight to #sessions) still
+    // formats timestamps in the user's tz, not UTC.
+    if (b.timezone) {
+      currentTimezone = b.timezone;
+      const tzEl = document.getElementById('tz');
+      if (tzEl && !tzEl.textContent) tzEl.textContent = b.timezone;
+    }
   } catch { /* harmless — settings/budget tabs will re-apply later */ }
 }
 
 (async function main() {
   try {
-    applyInitialPlanChrome();
+    // Awaited so currentTimezone + plan chrome are set BEFORE any view
+    // renders — otherwise a deep-link to #sessions could render the table
+    // in UTC before /api/v1/stats lands. The fetch is small (~1 KB).
+    await applyInitialPlanChrome();
     if (focusMode) {
       document.body.classList.add('focus-mode');
       const { head, arg } = parseHash();
@@ -853,12 +893,20 @@ function renderSettings(data) {
   const tzSel = document.getElementById('settings-tz');
   const tzCur = document.getElementById('settings-tz-current');
   if (tzSel) {
-    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [];
+    let zones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [];
+    // Ensure UTC is available; add it if missing (some environments may not include it)
+    if (!zones.includes('UTC')) {
+      zones = ['UTC', ...zones];
+    }
     const current = data.timezone || 'UTC';
     tzSel.innerHTML = zones.map(z =>
       `<option value="${z}"${z === current ? ' selected' : ''}>${z}</option>`
     ).join('');
     if (tzCur) tzCur.textContent = `Current: ${current}`;
+    // Update header timezone display
+    currentTimezone = current;
+    const tzHeaderEl = document.getElementById('tz');
+    if (tzHeaderEl) tzHeaderEl.textContent = current;
   }
 
   // Subscription
@@ -1004,8 +1052,9 @@ document.getElementById('settings-tz').addEventListener('change', async () => {
     const plan = planEl.value;
     // Fixed-price plans (api/pro/max_*) always have a canonical fee — overwrite
     // whatever's in the input so the form shows the right number even before
-    // the backend echoes it back. For team/custom, pre-fill the suggested fee
-    // only when the user hasn't already typed one.
+    // the backend echoes it back. For team/enterprise/custom (with hidden or
+    // editable fields), pre-fill the suggested fee only when the user hasn't
+    // already typed one.
     if (Object.prototype.hasOwnProperty.call(PLAN_FIXED_FEES, plan)) {
       feeEl.value = PLAN_FIXED_FEES[plan];
     } else {
@@ -1029,11 +1078,127 @@ document.getElementById('settings-tz').addEventListener('change', async () => {
   });
 })();
 
+// ---------- Data Management ----------
+async function loadDataManagement() {
+  try {
+    const resp = await fetch('/api/v1/rebuild');
+    if (!resp.ok) throw new Error('Failed to load rebuild status');
+    const data = await resp.json();
+    renderLastRebuildStats(data.last_rebuild);
+  } catch (err) {
+    console.error('Error loading data management:', err);
+  }
+}
+
+function renderLastRebuildStats(stats) {
+  if (!stats) {
+    document.getElementById('dm-status-value').textContent = 'No rebuild yet';
+    return;
+  }
+
+  const ts = new Date(stats.completed_at);
+  document.getElementById('dm-status-value').textContent = stats.error ? 'Failed' : 'Success';
+  document.getElementById('dm-completed-value').textContent =
+    ts.toLocaleString(undefined, {year: 'numeric', month: '2-digit', day: '2-digit',
+                                   hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  document.getElementById('dm-scanned-value').textContent = stats.files_scanned || '—';
+  document.getElementById('dm-indexed-value').textContent = stats.files_indexed || '—';
+  document.getElementById('dm-skipped-value').textContent = stats.files_skipped || '—';
+  document.getElementById('dm-messages-value').textContent = stats.messages_added || '—';
+  document.getElementById('dm-tools-value').textContent = stats.tool_calls_added || '—';
+  document.getElementById('dm-duration-value').textContent = stats.duration || '—';
+}
+
+// Rebuild index handler (Data Management tab)
+(() => {
+  const rebuildBtn = document.getElementById('dm-rebuild-btn');
+  const rebuildProgress = document.getElementById('dm-rebuild-progress');
+  const rebuildMessage = document.getElementById('dm-rebuild-message');
+  const rebuildStats = document.getElementById('dm-rebuild-stats');
+  const rebuildStatus = document.getElementById('dm-rebuild-status');
+
+  if (!rebuildBtn) return;
+
+  rebuildBtn.addEventListener('click', async () => {
+    rebuildBtn.disabled = true;
+    rebuildProgress.classList.remove('hidden');
+    rebuildStats.innerHTML = '';
+    rebuildStatus.textContent = '';
+
+    try {
+      const resp = await fetch('/api/v1/rebuild', { method: 'POST' });
+      if (!resp.ok) {
+        throw new Error(await resp.text());
+      }
+      rebuildMessage.textContent = 'Rebuilding... this may take a few minutes.';
+    } catch (err) {
+      rebuildStatus.textContent = 'Error: ' + err.message;
+      rebuildBtn.disabled = false;
+      rebuildProgress.classList.add('hidden');
+    }
+  });
+
+  // Listen for rebuild events via SSE
+  const es = new EventSource('/api/v1/events');
+
+  es.addEventListener('rebuild_start', () => {
+    rebuildMessage.textContent = 'Starting rebuild...';
+    rebuildStats.innerHTML = 'Scanning files...';
+  });
+
+  es.addEventListener('rebuild_progress', (e) => {
+    const data = JSON.parse(e.data);
+    rebuildStats.innerHTML = `Files indexed: ${data.files_indexed} / ${data.files_scanned}`;
+  });
+
+  es.addEventListener('rebuild_complete', (e) => {
+    const data = JSON.parse(e.data);
+    rebuildMessage.textContent = '✓ Rebuild complete!';
+    rebuildStats.innerHTML = `
+      Files scanned: ${data.files_scanned}<br>
+      Files indexed: ${data.files_indexed}<br>
+      Messages added: ${data.messages_added}<br>
+      Tool calls: ${data.tool_calls_added}<br>
+      Duration: ${data.duration}
+    `;
+    rebuildProgress.style.borderLeftColor = 'var(--accent-2)';
+    rebuildBtn.disabled = false;
+
+    // Update stats table
+    renderLastRebuildStats(data);
+
+    // Auto-refresh all dashboard data
+    setTimeout(() => {
+      loadOverview().catch(() => {});
+      loadProjects().catch(() => {});
+      loadBudget().catch(() => {});
+    }, 1500);
+
+    // Hide progress box after showing stats
+    setTimeout(() => {
+      rebuildProgress.classList.add('hidden');
+    }, 3000);
+  });
+
+  es.addEventListener('rebuild_error', (e) => {
+    const data = JSON.parse(e.data);
+    rebuildMessage.textContent = '✗ Rebuild failed';
+    rebuildStats.innerHTML = `Error: ${data.error}`;
+    rebuildProgress.style.borderLeftColor = 'var(--warn)';
+    rebuildBtn.disabled = false;
+
+    // Hide progress box after showing error
+    setTimeout(() => {
+      rebuildProgress.classList.add('hidden');
+    }, 3000);
+  });
+})();
+
 // Suggested monthly fees per plan. Used only to pre-fill the fee input when
 // the user changes the plan dropdown — never overrides an existing non-zero
 // value the user already typed.
 const PLAN_DEFAULT_FEES = {
-  api: 0, pro: 20, max_5x: 100, max_20x: 200, team: 30, custom: 0,
+  api: 0, pro: 20, max_5x: 100, max_20x: 200, team: 30, enterprise: 0, custom: 0,
 };
 
 // Plans whose fee is determined by Anthropic, not by the user. The fee input
@@ -1045,10 +1210,11 @@ const PLAN_FIXED_FEES = { api: 0, pro: 20, max_5x: 100, max_20x: 200 };
 // applyPlanFormState toggles which Subscription fields are visible based on
 // plan and rewrites the Budget help text so each plan reads naturally:
 //
-//   API     — fee row hidden; budget = real-spend cap
-//   Pro/Max — fee row hidden, read-only pill shown; budget = value target
-//   Team    — fee row editable (per-seat varies); budget = value target
-//   Custom  — fee row editable; budget = value target
+//   API        — fee row hidden; budget = real-spend cap
+//   Pro/Max    — fee row hidden, read-only pill shown; budget = value target
+//   Team       — fee row editable (per-seat varies); budget = value target
+//   Enterprise — fee row hidden (negotiated pricing); budget = value target
+//   Custom     — fee row editable; budget = value target
 //
 // Called from renderSettings (initial load) and the plan dropdown's change
 // handler so the form reshuffles immediately.
@@ -1061,8 +1227,10 @@ function applyPlanFormState(plan) {
 
   const isFixed = Object.prototype.hasOwnProperty.call(PLAN_FIXED_FEES, plan);
   const isAPI = plan === 'api';
+  const isEnterprise = plan === 'enterprise';
 
-  if (feeRow)   feeRow.classList.toggle('hidden', isFixed);
+  // Hide fee row for fixed-price plans (Pro/Max) and Enterprise (negotiated pricing)
+  if (feeRow)   feeRow.classList.toggle('hidden', isFixed || isEnterprise);
   if (fixedRow) fixedRow.classList.toggle('hidden', !isFixed || isAPI);
   if (pill && isFixed && !isAPI) {
     pill.textContent = `$${PLAN_FIXED_FEES[plan].toFixed(2)}/mo (${planLabelFor(plan)})`;
@@ -1092,12 +1260,13 @@ function applyPlanFormState(plan) {
 // echoed back the new value.
 function planLabelFor(plan) {
   switch (plan) {
-    case 'pro':     return 'Pro';
-    case 'max_5x':  return 'Max 5×';
-    case 'max_20x': return 'Max 20×';
-    case 'team':    return 'Team';
-    case 'custom':  return 'Custom';
-    default:        return 'API';
+    case 'pro':        return 'Pro';
+    case 'max_5x':     return 'Max 5×';
+    case 'max_20x':    return 'Max 20×';
+    case 'team':       return 'Team';
+    case 'enterprise': return 'Enterprise';
+    case 'custom':     return 'Custom';
+    default:           return 'API';
   }
 }
 

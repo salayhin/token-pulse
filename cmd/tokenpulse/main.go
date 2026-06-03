@@ -138,7 +138,7 @@ func serveCmd() *cobra.Command {
 				InFlight:   w.InFlight,
 				SlowWrites: st.SlowWrites,
 			}
-			s := server.New(provider, cfgPath, eng, bus, health, log)
+			s := server.New(provider, cfgPath, eng, bus, health, log, idx)
 			return s.Start(ctx)
 		},
 	}
