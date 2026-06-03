@@ -14,20 +14,6 @@
         }
 
         :root {
-            --primary: #3b82f6;
-            --primary-dark: #1e40af;
-            --text: #1f2937;
-            --text-light: #6b7280;
-            --border: #e5e7eb;
-            --bg-light: #f9fafb;
-            --bg-white: #ffffff;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-        }
-
-        /* Dark Blue Theme */
-        :root[data-theme="dark"] {
             --primary: #60a5fa;
             --primary-dark: #3b82f6;
             --text: #e5e7eb;
@@ -451,51 +437,6 @@
             color: white;
         }
 
-        /* Theme Toggle Button */
-        .theme-toggle {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 1rem;
-        }
-
-        .theme-toggle:hover {
-            background: var(--bg-light);
-            border-color: var(--primary);
-        }
-
-        /* Dark theme SVG adjustments */
-        :root[data-theme="dark"] svg text {
-            fill: var(--text) !important;
-        }
-
-        :root[data-theme="dark"] svg text[fill="#1e1e1e"],
-        :root[data-theme="dark"] svg text[fill="#757575"] {
-            fill: var(--text) !important;
-        }
-
-        :root[data-theme="dark"] .tab-info {
-            background: var(--bg-white);
-        }
-
-        :root[data-theme="dark"] .feature-card {
-            background: var(--bg-white);
-            border-color: var(--border);
-        }
-
-        :root[data-theme="dark"] .feature-card:hover {
-            border-color: var(--primary);
-        }
-
-        :root[data-theme="dark"] pre {
-            background: #0f1419;
-            color: #e5e7eb;
-        }
-
     </style>
 </head>
 <body>
@@ -503,14 +444,11 @@
     <header>
         <nav>
             <a href="#" class="logo">⚡ Token Pulse</a>
-            <div style="display: flex; gap: 1rem; align-items: center;">
-                <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light theme">🌙</button>
-                <a href="https://github.com/salayhin/token-pulse" class="github-logo" title="GitHub Repository" target="_blank">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                </a>
-            </div>
+            <a href="https://github.com/salayhin/token-pulse" class="github-logo" title="GitHub Repository" target="_blank">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+            </a>
         </nav>
     </header>
 
@@ -659,8 +597,8 @@ make build
             <div style="background: white; border-radius: 0.75rem; border: 1px solid var(--border); padding: 1.5rem; overflow-x: auto;">
                 <svg viewBox="0 0 1160 740" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace" style="width: 100%; max-width: 100%; height: auto;">
                   <!-- Title -->
-                  <text x="580" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e1e1e">System Architecture</text>
-                  <text x="580" y="54" text-anchor="middle" font-size="14" fill="#757575">Single Go binary  ·  Embedded SPA  ·  SQLite storage</text>
+                  <text x="580" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#e5e7eb">System Architecture</text>
+                  <text x="580" y="54" text-anchor="middle" font-size="14" fill="#9ca3af">Single Go binary  ·  Embedded SPA  ·  SQLite storage</text>
 
                   <!-- ZONE: Source Data -->
                   <rect x="20" y="72" width="200" height="110" rx="10" fill="#dbe4ff" fill-opacity="0.55" stroke="#4a9eed" stroke-width="1.5"/>
@@ -808,7 +746,7 @@ make build
 
                   <!-- Legend -->
                   <rect x="20" y="504" width="710" height="110" rx="10" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.5"/>
-                  <text x="36" y="524" font-size="13" font-weight="bold" fill="#1e1e1e">Key Invariants</text>
+                  <text x="36" y="524" font-size="13" font-weight="bold" fill="#e5e7eb">Key Invariants</text>
                   <circle cx="44" cy="541" r="4" fill="#2563eb"/>
                   <text x="56" y="546" font-size="11" fill="#2563eb">Binds 127.0.0.1 only — personal use, no auth, no network exposure</text>
                   <circle cx="44" cy="561" r="4" fill="#15803d"/>
@@ -854,7 +792,7 @@ make build
             <div style="background: var(--bg-light); border-radius: 0.75rem; border: 1px solid var(--border); padding: 1.5rem; overflow-x: auto;">
                 <svg viewBox="0 0 1200 750" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace" style="width: 100%; max-width: 100%; height: auto; min-height: 400px;">
                   <!-- Title -->
-                  <text x="600" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e1e1e">Token Pulse — Complete Data Flow</text>
+                  <text x="600" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#e5e7eb">Token Pulse — Complete Data Flow</text>
 
                   <!-- Zones (background rectangles) -->
                   <rect x="40" y="60" width="180" height="650" rx="8" fill="#a5d8ff" fill-opacity="0.1" stroke="#4a9eed" stroke-width="1" stroke-dasharray="3 3"/>
@@ -960,7 +898,7 @@ make build
                   <!-- Key info boxes -->
                   <rect x="55" y="470" width="710" height="210" rx="6" fill="#f9fafb" stroke="#d1d5db" stroke-width="1"/>
 
-                  <text x="75" y="495" font-size="12" font-weight="bold" fill="#1e1e1e">Key Points</text>
+                  <text x="75" y="495" font-size="12" font-weight="bold" fill="#e5e7eb">Key Points</text>
 
                   <circle cx="75" cy="525" r="3" fill="#4a9eed"/>
                   <text x="90" y="530" font-size="11" fill="#1f2937">Parser is resume-safe: partial JSONL lines don't advance byte offset</text>
@@ -1014,30 +952,5 @@ make build
             </div>
         </div>
     </footer>
-
-    <script>
-        // Theme Toggle
-        const themeToggle = document.getElementById('theme-toggle');
-        const html = document.documentElement;
-
-        // Load theme preference from localStorage
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        html.setAttribute('data-theme', savedTheme);
-        updateThemeButton(savedTheme);
-
-        // Theme toggle event listener
-        themeToggle.addEventListener('click', () => {
-            const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            html.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeButton(newTheme);
-        });
-
-        // Update button icon based on theme
-        function updateThemeButton(theme) {
-            themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
-        }
-    </script>
 </body>
 </html>
